@@ -69,4 +69,7 @@ effectlib_npc_effect:
   grow: 0.1
   radius: 0.5
   delay: 5
+click:
+  right: true
+  left: false
   
