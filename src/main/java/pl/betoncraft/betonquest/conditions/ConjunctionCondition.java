@@ -1,6 +1,6 @@
 /**
  * BetonQuest - advanced quests for Bukkit
- * Copyright (C) 2015  Jakub "Co0sh" Sapalski
+ * Copyright (C) 2016  Jakub "Co0sh" Sapalski
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,6 +20,7 @@ package pl.betoncraft.betonquest.conditions;
 import pl.betoncraft.betonquest.BetonQuest;
 import pl.betoncraft.betonquest.InstructionParseException;
 import pl.betoncraft.betonquest.api.Condition;
+import pl.betoncraft.betonquest.utils.Utils;
 
 /**
  * All of specified conditions have to be true
@@ -28,7 +29,7 @@ import pl.betoncraft.betonquest.api.Condition;
  */
 public class ConjunctionCondition extends Condition {
 
-	private final String[] conditions;
+	private  String[] conditions;
 
 	public ConjunctionCondition(String packName, String instructions) throws InstructionParseException {
 		super(packName, instructions);
@@ -36,13 +37,10 @@ public class ConjunctionCondition extends Condition {
 		if (parts.length < 2) {
 			throw new InstructionParseException("Conditions not defined");
 		}
-		String[] tempConditions = parts[1].split(",");
-		for (int i = 0; i < tempConditions.length; i++) {
-			if (!tempConditions[i].contains(".")) {
-				tempConditions[i] = packName + "." + tempConditions[i];
-			}
+		conditions = parts[1].split(",");
+		for (int i = 0; i < conditions.length; i++) {
+			conditions[i] = Utils.addPackage(packName, conditions[i]);
 		}
-		conditions = tempConditions;
 	}
 
 	@Override

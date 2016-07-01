@@ -1,6 +1,6 @@
 /**
  * BetonQuest - advanced quests for Bukkit
- * Copyright (C) 2015  Jakub "Co0sh" Sapalski
+ * Copyright (C) 2016  Jakub "Co0sh" Sapalski
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,6 +18,7 @@
 package pl.betoncraft.betonquest.conversation;
 
 import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,14 +27,17 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.scheduler.BukkitRunnable;
 
 import pl.betoncraft.betonquest.BetonQuest;
+import pl.betoncraft.betonquest.api.ConversationOptionEvent;
 import pl.betoncraft.betonquest.api.PlayerConversationEndEvent;
 import pl.betoncraft.betonquest.api.PlayerConversationStartEvent;
 import pl.betoncraft.betonquest.config.Config;
@@ -66,8 +70,11 @@ public class Conversation implements Listener {
 	private final Conversation conv;
 	private final BetonQuest plugin;
 	private boolean ended = false;
+	private boolean messagesDelaying = false;
+	private ArrayList<String> messages = new ArrayList<>();
 
 	private HashMap<Integer, String> current = new HashMap<>();
+
 
 	/**
 	 * Starts a new conversation between player and npc at given location.
@@ -114,6 +121,7 @@ public class Conversation implements Listener {
 		this.convID = packName + "." + conversationID;
 		this.data = plugin.getConversation(convID);
 		this.blacklist = plugin.getConfig().getStringList("cmd_blacklist");
+		this.messagesDelaying = plugin.getConfig().getString("display_chat_after_conversation").equalsIgnoreCase("true");
 
 		// check if data is present
 		if (data == null) {
@@ -245,7 +253,12 @@ public class Conversation implements Listener {
 			}
 			inOut.addPlayerOption(text);
 		}
-		inOut.display();
+		new BukkitRunnable() {
+			@Override
+			public void run() {
+				inOut.display();
+			}
+		}.runTask(plugin);
 		// end conversations if there are no possible options
 		if (current.isEmpty()) {
 			new ConversationEnder().runTask(plugin);
@@ -271,7 +284,14 @@ public class Conversation implements Listener {
 		// delete conversation
 		list.remove(playerID);
 		HandlerList.unregisterAll(this);
+		displayStoredMessages();
 		Bukkit.getServer().getPluginManager().callEvent(new PlayerConversationEndEvent(player, this));
+	}
+
+	private void displayStoredMessages() {
+		for (String message : messages) {
+			player.sendMessage(message);
+		}
 	}
 
 	/**
@@ -317,6 +337,29 @@ public class Conversation implements Listener {
 				endConversation();
 			}
 		}
+	}
+
+	@EventHandler(priority=EventPriority.HIGHEST)
+	public void onChat(AsyncPlayerChatEvent event) {
+		// store all messages so they can be displayed to the player
+		// once the conversation is finished
+		if (!messagesDelaying) {
+			return;
+		}
+		if (event.isCancelled()) {
+			return;
+		}
+		if (event.getPlayer() != player && event.getRecipients().contains(player)) {
+			event.getRecipients().remove(player);
+			addMessage(String.format(event.getFormat(), event.getPlayer().getDisplayName(), event.getMessage()));
+		}
+	}
+
+	/**
+	 * This method prevents concurrent list modification
+	 */
+	private synchronized void addMessage(String message) {
+		messages.add(message);
 	}
 
 	/**
@@ -378,6 +421,20 @@ public class Conversation implements Listener {
 	public ConversationData getData() {
 		return data;
 	}
+	
+	/**
+	 * @return the package containing this conversation
+	 */
+	public String getPackage() {
+		return packName;
+	}
+	
+	/**
+	 * @return the ID of the conversation
+	 */
+	public String getID() {
+		return convID;
+	}
 
 	/**
 	 * Starts the conversation, should be called asynchronously.
@@ -420,7 +477,7 @@ public class Conversation implements Listener {
 				return;
 			}
 
-			// register listeners for immunity and blocking commands
+			// register listener for immunity, blocking commands and storing chat messages
 			Bukkit.getPluginManager().registerEvents(conv, BetonQuest.getInstance());
 
 			if (options == null) {
@@ -450,6 +507,8 @@ public class Conversation implements Listener {
 
 			// print NPC's text
 			printNPCText();
+			ConversationOptionEvent e = new ConversationOptionEvent(player, conv, option, conv.option);
+			Bukkit.getPluginManager().callEvent(e);
 		}
 	}
 
@@ -515,6 +574,8 @@ public class Conversation implements Listener {
 			selectOption(data.getData(option, OptionType.PLAYER, RequestType.POINTER), false);
 			// print to player npc's answer
 			printNPCText();
+			ConversationOptionEvent event = new ConversationOptionEvent(player, conv, option, conv.option);
+			Bukkit.getPluginManager().callEvent(event);
 		}
 	}
 

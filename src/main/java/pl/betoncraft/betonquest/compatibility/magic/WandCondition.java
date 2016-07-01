@@ -1,6 +1,6 @@
 /**
  * BetonQuest - advanced quests for Bukkit
- * Copyright (C) 2015  Jakub "Co0sh" Sapalski
+ * Copyright (C) 2016  Jakub "Co0sh" Sapalski
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,6 +29,7 @@ import com.elmakers.mine.bukkit.api.wand.LostWand;
 import com.elmakers.mine.bukkit.api.wand.Wand;
 
 import pl.betoncraft.betonquest.InstructionParseException;
+import pl.betoncraft.betonquest.QuestRuntimeException;
 import pl.betoncraft.betonquest.VariableNumber;
 import pl.betoncraft.betonquest.api.Condition;
 import pl.betoncraft.betonquest.utils.PlayerConverter;
@@ -88,7 +89,7 @@ public class WandCondition extends Condition {
 	}
 
 	@Override
-	public boolean check(String playerID) {
+	public boolean check(String playerID) throws QuestRuntimeException {
 		Player player = PlayerConverter.getPlayer(playerID);
 		switch (type) {
 		case IS_LOST:
@@ -131,20 +132,17 @@ public class WandCondition extends Condition {
 	 * @param wand
 	 *            wand to check
 	 * @return true if the wand meets the conditions, false otherwise
+	 * @throws QuestRuntimeException 
 	 */
-	private boolean checkWand(Wand wand, String playerID) {
+	private boolean checkWand(Wand wand, String playerID) throws QuestRuntimeException {
 		if (name != null && !wand.getTemplateKey().equalsIgnoreCase(name)) {
 			return false;
 		}
 		if (!spells.isEmpty()) {
 			spell: for (String spell : spells.keySet()) {
 				int level = spells.get(spell).getInt(playerID);
-				System.out.println("checking if wand has spell " + spell + " with level " + level);
 				for (String wandSpell : wand.getSpells()) {
-					System.out.println(
-							"  checking wand spell " + wandSpell + " with level " + wand.getSpellLevel(wandSpell));
 					if (wandSpell.toLowerCase().startsWith(spell.toLowerCase()) && wand.getSpellLevel(spell) >= level) {
-						System.out.println("    matching!");
 						continue spell;
 					}
 				}

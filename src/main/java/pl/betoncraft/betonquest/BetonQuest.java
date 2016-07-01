@@ -1,6 +1,6 @@
 /**
  * BetonQuest - advanced quests for Bukkit
- * Copyright (C) 2015  Jakub "Co0sh" Sapalski
+ * Copyright (C) 2016  Jakub "Co0sh" Sapalski
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -44,6 +44,7 @@ import pl.betoncraft.betonquest.commands.JournalCommand;
 import pl.betoncraft.betonquest.commands.LangCommand;
 import pl.betoncraft.betonquest.commands.QuestCommand;
 import pl.betoncraft.betonquest.compatibility.Compatibility;
+import pl.betoncraft.betonquest.conditions.AchievementCondition;
 import pl.betoncraft.betonquest.conditions.AlternativeCondition;
 import pl.betoncraft.betonquest.conditions.ArmorCondition;
 import pl.betoncraft.betonquest.conditions.ArmorRatingCondition;
@@ -53,6 +54,7 @@ import pl.betoncraft.betonquest.conditions.ConjunctionCondition;
 import pl.betoncraft.betonquest.conditions.EffectCondition;
 import pl.betoncraft.betonquest.conditions.EmptySlotsCondition;
 import pl.betoncraft.betonquest.conditions.ExperienceCondition;
+import pl.betoncraft.betonquest.conditions.GameModeCondition;
 import pl.betoncraft.betonquest.conditions.HandCondition;
 import pl.betoncraft.betonquest.conditions.HealthCondition;
 import pl.betoncraft.betonquest.conditions.HeightCondition;
@@ -70,7 +72,10 @@ import pl.betoncraft.betonquest.conditions.SneakCondition;
 import pl.betoncraft.betonquest.conditions.TagCondition;
 import pl.betoncraft.betonquest.conditions.TestForBlockCondition;
 import pl.betoncraft.betonquest.conditions.TimeCondition;
+import pl.betoncraft.betonquest.conditions.VariableCondition;
+import pl.betoncraft.betonquest.conditions.VehicleCondition;
 import pl.betoncraft.betonquest.conditions.WeatherCondition;
+import pl.betoncraft.betonquest.conditions.WorldCondition;
 import pl.betoncraft.betonquest.config.Config;
 import pl.betoncraft.betonquest.config.ConfigPackage;
 import pl.betoncraft.betonquest.config.ConfigUpdater;
@@ -98,11 +103,13 @@ import pl.betoncraft.betonquest.events.CommandEvent;
 import pl.betoncraft.betonquest.events.CompassEvent;
 import pl.betoncraft.betonquest.events.ConversationEvent;
 import pl.betoncraft.betonquest.events.DamageEvent;
+import pl.betoncraft.betonquest.events.DoorEvent;
 import pl.betoncraft.betonquest.events.EffectEvent;
 import pl.betoncraft.betonquest.events.ExplosionEvent;
 import pl.betoncraft.betonquest.events.FolderEvent;
 import pl.betoncraft.betonquest.events.GiveEvent;
 import pl.betoncraft.betonquest.events.GiveJournalEvent;
+import pl.betoncraft.betonquest.events.IfElseEvent;
 import pl.betoncraft.betonquest.events.JournalEvent;
 import pl.betoncraft.betonquest.events.KillEvent;
 import pl.betoncraft.betonquest.events.LightningEvent;
@@ -114,6 +121,7 @@ import pl.betoncraft.betonquest.events.RunEvent;
 import pl.betoncraft.betonquest.events.ScoreboardEvent;
 import pl.betoncraft.betonquest.events.SetBlockEvent;
 import pl.betoncraft.betonquest.events.SpawnMobEvent;
+import pl.betoncraft.betonquest.events.LeverEvent;
 import pl.betoncraft.betonquest.events.SudoEvent;
 import pl.betoncraft.betonquest.events.TagEvent;
 import pl.betoncraft.betonquest.events.TakeEvent;
@@ -124,12 +132,14 @@ import pl.betoncraft.betonquest.objectives.ActionObjective;
 import pl.betoncraft.betonquest.objectives.ArrowShootObjective;
 import pl.betoncraft.betonquest.objectives.BlockObjective;
 import pl.betoncraft.betonquest.objectives.ChestPutObjective;
+import pl.betoncraft.betonquest.objectives.ConsumeObjective;
 import pl.betoncraft.betonquest.objectives.CraftingObjective;
 import pl.betoncraft.betonquest.objectives.DelayObjective;
 import pl.betoncraft.betonquest.objectives.DieObjective;
 import pl.betoncraft.betonquest.objectives.EnchantObjective;
 import pl.betoncraft.betonquest.objectives.ExperienceObjective;
 import pl.betoncraft.betonquest.objectives.FishObjective;
+import pl.betoncraft.betonquest.objectives.KillPlayerObjective;
 import pl.betoncraft.betonquest.objectives.LocationObjective;
 import pl.betoncraft.betonquest.objectives.LogoutObjective;
 import pl.betoncraft.betonquest.objectives.MobKillObjective;
@@ -139,6 +149,8 @@ import pl.betoncraft.betonquest.objectives.ShearObjective;
 import pl.betoncraft.betonquest.objectives.SmeltingObjective;
 import pl.betoncraft.betonquest.objectives.StepObjective;
 import pl.betoncraft.betonquest.objectives.TameObjective;
+import pl.betoncraft.betonquest.objectives.VariableObjective;
+import pl.betoncraft.betonquest.objectives.VehicleObjective;
 import pl.betoncraft.betonquest.utils.Debug;
 import pl.betoncraft.betonquest.utils.Metrics;
 import pl.betoncraft.betonquest.utils.PlayerConverter;
@@ -294,6 +306,11 @@ public final class BetonQuest extends JavaPlugin {
 		registerConditions("check", CheckCondition.class);
 		registerConditions("chestitem", ChestItemCondition.class);
 		registerConditions("score", ScoreboardCondition.class);
+		registerConditions("riding", VehicleCondition.class);
+		registerConditions("world", WorldCondition.class);
+		registerConditions("gamemode", GameModeCondition.class);
+		registerConditions("achievement", AchievementCondition.class);
+		registerConditions("variable", VariableCondition.class);
 
 		// register events
 		registerEvents("message", MessageEvent.class);
@@ -327,6 +344,9 @@ public final class BetonQuest extends JavaPlugin {
 		registerEvents("compass", CompassEvent.class);
 		registerEvents("cancel", CancelEvent.class);
 		registerEvents("score", ScoreboardEvent.class);
+		registerEvents("lever", LeverEvent.class);
+		registerEvents("door", DoorEvent.class);
+		registerEvents("if", IfElseEvent.class);
 
 		// register objectives
 		registerObjectives("location", LocationObjective.class);
@@ -348,6 +368,10 @@ public final class BetonQuest extends JavaPlugin {
 		registerObjectives("shear", ShearObjective.class);
 		registerObjectives("chestput", ChestPutObjective.class);
 		registerObjectives("potion", PotionObjective.class);
+		registerObjectives("vehicle", VehicleObjective.class);
+		registerObjectives("consume", ConsumeObjective.class);
+		registerObjectives("variable", VariableObjective.class);
+		registerObjectives("kill", KillPlayerObjective.class);
 
 		// register conversation IO types
 		registerConversationIO("simple", SimpleConvIO.class);
@@ -796,7 +820,13 @@ public final class BetonQuest extends JavaPlugin {
 			return false;
 		}
 		// and check if it's met or not
-		boolean outcome = condition.check(playerID);
+		boolean outcome = false;
+		try {
+			outcome = condition.check(playerID);
+		} catch (QuestRuntimeException e) {
+			Debug.error("Error while checking '" + conditionID + "' condition: " + e.getMessage());
+			return false;
+		}
 		boolean isMet = (outcome && !inverted) || (!outcome && inverted);
 		Debug.info((isMet ? "TRUE" : "FALSE") + ": " + (inverted ? "inverted" : "") + " condition " + conditionID
 				+ " for player " + PlayerConverter.getName(playerID));
@@ -829,7 +859,11 @@ public final class BetonQuest extends JavaPlugin {
 		} else {
 			Debug.info("Firing event " + eventID + " for " + PlayerConverter.getName(playerID));
 		}
-		event.fire(playerID);
+		try {
+			event.fire(playerID);
+		} catch (QuestRuntimeException e) {
+			Debug.error("Error while firing '" + eventID + "' event: " + e.getMessage());
+		}
 	}
 
 	/**

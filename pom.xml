@@ -65,8 +65,8 @@
 			<url>https://hub.spigotmc.org/nexus/content/repositories/snapshots</url>
 		</repository>
 		<repository>
-			<id>lib</id>
-			<url>file://${project.basedir}/lib</url>
+			<id>betonquest-repo</id>
+			<url>http://betonquest.betoncraft.pl/mvn</url>
 		</repository>
 	</repositories>
 	<dependencies>
@@ -149,6 +149,26 @@
 			<groupId>com.nisovin.shopkeepers</groupId>
 			<artifactId>Shopkeepers</artifactId>
 			<version>1.74</version>
+		</dependency>
+		<dependency>
+			<groupId>me.clip</groupId>
+			<artifactId>PlaceholderAPI</artifactId>
+			<version>2.5.1</version>
+		</dependency>
+		<dependency>
+			<groupId>com.gmail.filoghost</groupId>
+			<artifactId>HolographicDisplaysAPI</artifactId>
+			<version>2.1.7</version>
+		</dependency>
+		<dependency>
+			<groupId>de.tobiyas</groupId>
+			<artifactId>RacesAndClasses</artifactId>
+			<version>1.1.13</version>
+		</dependency>
+		<dependency>
+			<groupId>me.sablednah</groupId>
+			<artifactId>LegendQuest</artifactId>
+			<version>1.9.7</version>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.logging.log4j</groupId>

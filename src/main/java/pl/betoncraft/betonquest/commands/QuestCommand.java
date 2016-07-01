@@ -1,6 +1,6 @@
 /**
  * BetonQuest - advanced quests for Bukkit
- * Copyright (C) 2015  Jakub "Co0sh" Sapalski
+ * Copyright (C) 2016  Jakub "Co0sh" Sapalski
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -43,6 +43,7 @@ import pl.betoncraft.betonquest.Pointer;
 import pl.betoncraft.betonquest.QuestItem;
 import pl.betoncraft.betonquest.StaticEvents;
 import pl.betoncraft.betonquest.api.Objective;
+import pl.betoncraft.betonquest.compatibility.Compatibility;
 import pl.betoncraft.betonquest.config.Config;
 import pl.betoncraft.betonquest.config.ConfigAccessor;
 import pl.betoncraft.betonquest.config.ConfigPackage;
@@ -267,34 +268,13 @@ public class QuestCommand implements CommandExecutor {
 			sendMessage(sender, "specify_item");
 			return;
 		}
-		String itemID = args[1];
-		String packName;
-		String name;
-		if (itemID.contains(".")) {
-			String[] parts = itemID.split("\\.");
-			packName = parts[0];
-			name = parts[1];
-		} else {
-			packName = defaultPack;
-			name = itemID;
-		}
-		Player player = (Player) sender;
-		ConfigPackage pack = Config.getPackage(packName);
-		if (pack == null) {
-			sendMessage(sender, "specify_package");
-			return;
-		}
-		String instruction = pack.getItems().getConfig().getString(name);
-		if (instruction == null) {
-			sendMessage(sender, "specify_item");
-			return;
-		}
+		String itemID = Utils.addPackage(Config.getDefaultPackage(), args[1]);
 		try {
-			QuestItem item = new QuestItem(instruction);
-			player.getInventory().addItem(item.generateItem(1));
+			QuestItem item = QuestItem.newQuestItem(Config.getDefaultPackage(), itemID);
+			((Player) sender).getInventory().addItem(item.generateItem(1));
 		} catch (InstructionParseException e) {
-			sendMessage(sender, "error");
-			Debug.error("Error while parsing item instruction: " + e.getMessage());
+			sendMessage(sender, "error", new String[]{e.getMessage()});
+			Debug.error("Error while creating an item: " + e.getMessage());
 		}
 	}
 
@@ -628,12 +608,12 @@ public class QuestCommand implements CommandExecutor {
 	 */
 	private void handleEvents(CommandSender sender, String[] args) {
 		// the player has to be specified every time
-		if (args.length < 2 || Bukkit.getPlayer(args[1]) == null) {
+		if (args.length < 2 || (Bukkit.getPlayer(args[1]) == null && !args[1].equals("-"))) {
 			Debug.info("Player's name is missing or he's offline");
 			sendMessage(sender, "specify_player");
 			return;
 		}
-		String playerID = PlayerConverter.getID(args[1]);
+		String playerID = (args[1].equals("-")) ? null : PlayerConverter.getID(args[1]);
 		if (args.length < 3) {
 			Debug.info("Event's ID is missing");
 			sendMessage(sender, "specify_event");
@@ -1137,6 +1117,7 @@ public class QuestCommand implements CommandExecutor {
 		GlobalLocations.stop();
 		new GlobalLocations().runTaskTimer(instance, 0, 20);
 		new ConversationColors();
+		Compatibility.reload();
 		// load all events, conditions, objectives, conversations etc.
 		instance.loadData();
 		// start objectives and update journals for every online player

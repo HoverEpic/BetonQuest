@@ -1,6 +1,6 @@
 /**
  * BetonQuest - advanced quests for Bukkit
- * Copyright (C) 2015  Jakub "Co0sh" Sapalski
+ * Copyright (C) 2016  Jakub "Co0sh" Sapalski
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,6 +21,7 @@ import pl.betoncraft.betonquest.BetonQuest;
 import pl.betoncraft.betonquest.InstructionParseException;
 import pl.betoncraft.betonquest.Pointer;
 import pl.betoncraft.betonquest.api.Condition;
+import pl.betoncraft.betonquest.utils.Utils;
 
 /**
  * Checks if the player has specified pointer in his journal
@@ -37,11 +38,7 @@ public class JournalCondition extends Condition {
 		if (parts.length < 2) {
 			throw new InstructionParseException("Journal entry not defined");
 		}
-		if (parts[1].contains(".")) {
-			targetPointer = parts[1];
-		} else {
-			targetPointer = packName + "." + parts[1];
-		}
+		targetPointer = Utils.addPackage(packName, parts[1]);
 	}
 
 	@Override

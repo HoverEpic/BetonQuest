@@ -1,6 +1,6 @@
 /**
  * BetonQuest - advanced quests for Bukkit
- * Copyright (C) 2015  Jakub "Co0sh" Sapalski
+ * Copyright (C) 2016  Jakub "Co0sh" Sapalski
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,8 +18,9 @@
 package pl.betoncraft.betonquest.objectives;
 
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Date;
+import java.util.LinkedList;
+import java.util.Map.Entry;
 
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
@@ -39,6 +40,7 @@ public class DelayObjective extends Objective {
 
 	private final long delay;
 	private BukkitTask runnable;
+	private int interval = 20 * 10;
 
 	public DelayObjective(String packName, String label, String instruction) throws InstructionParseException {
 		super(packName, label, instruction);
@@ -55,6 +57,18 @@ public class DelayObjective extends Objective {
 		if (delay < 0) {
 			throw new InstructionParseException("Delay cannot be less than 0");
 		}
+		for (String part : parts) {
+			if (part.startsWith("interval:")) {
+				try {
+					interval = Integer.parseInt(part.substring(9));
+				} catch (NumberFormatException e) {
+					throw new InstructionParseException("Could not parse delay interval");
+				}
+				if (interval < 1) {
+					throw new InstructionParseException("Interval cannot be less than 1 tick");
+				}
+			}
+		}
 	}
 
 	@Override
@@ -62,14 +76,22 @@ public class DelayObjective extends Objective {
 		runnable = new BukkitRunnable() {
 			@Override
 			public void run() {
-				for (String playerID : new ArrayList<>(dataMap.keySet())) {
-					DelayData playerData = (DelayData) dataMap.get(playerID);
-					if (new Date().getTime() >= playerData.getTime() && checkConditions(playerID)) {
-						completeObjective(playerID);
+				LinkedList<String> players = new LinkedList<>();
+				long time = new Date().getTime();
+				for (Entry<String, ObjectiveData> entry : dataMap.entrySet()) {
+					String playerID = entry.getKey();
+					DelayData playerData = (DelayData) entry.getValue();
+					if (time >= playerData.getTime() && checkConditions(playerID)) {
+						// don't complete the objective, it will throw CME/
+						// store the player instead, complete later
+						players.add(playerID);
 					}
 				}
+				for (String playerID : players) {
+					completeObjective(playerID);
+				}
 			}
-		}.runTaskTimer(BetonQuest.getInstance(), 0, 20 * 10);
+		}.runTaskTimer(BetonQuest.getInstance(), 0, interval);
 	}
 
 	@Override

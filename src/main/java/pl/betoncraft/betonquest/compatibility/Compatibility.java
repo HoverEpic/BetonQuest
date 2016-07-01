@@ -1,6 +1,6 @@
 /**
  * BetonQuest - advanced quests for Bukkit
- * Copyright (C) 2015  Jakub "Co0sh" Sapalski
+ * Copyright (C) 2016  Jakub "Co0sh" Sapalski
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -34,23 +34,50 @@ import pl.betoncraft.betonquest.compatibility.citizens.CitizensParticle;
 import pl.betoncraft.betonquest.compatibility.citizens.CitizensWalkingListener;
 import pl.betoncraft.betonquest.compatibility.citizens.NPCInteractObjective;
 import pl.betoncraft.betonquest.compatibility.citizens.NPCKillObjective;
+import pl.betoncraft.betonquest.compatibility.citizens.NPCMoveEvent;
 import pl.betoncraft.betonquest.compatibility.denizen.DenizenTaskScriptEvent;
 import pl.betoncraft.betonquest.compatibility.effectlib.ParticleEvent;
 import pl.betoncraft.betonquest.compatibility.heroes.HeroesClassCondition;
 import pl.betoncraft.betonquest.compatibility.heroes.HeroesExperienceEvent;
 import pl.betoncraft.betonquest.compatibility.heroes.HeroesMobKillListener;
 import pl.betoncraft.betonquest.compatibility.heroes.HeroesSkillCondition;
+import pl.betoncraft.betonquest.compatibility.holographicdisplays.HologramLoop;
+import pl.betoncraft.betonquest.compatibility.legendquest.LQAttributeCondition;
+import pl.betoncraft.betonquest.compatibility.legendquest.LQAttributeVariable;
+import pl.betoncraft.betonquest.compatibility.legendquest.LQClassCondition;
+import pl.betoncraft.betonquest.compatibility.legendquest.LQClassVariable;
+import pl.betoncraft.betonquest.compatibility.legendquest.LQKarmaCondition;
+import pl.betoncraft.betonquest.compatibility.legendquest.LQKarmaVariable;
+import pl.betoncraft.betonquest.compatibility.legendquest.LQRaceCondition;
+import pl.betoncraft.betonquest.compatibility.legendquest.LQRaceVariable;
 import pl.betoncraft.betonquest.compatibility.magic.WandCondition;
 import pl.betoncraft.betonquest.compatibility.mcmmo.McMMOAddExpEvent;
 import pl.betoncraft.betonquest.compatibility.mcmmo.McMMOSkillLevelCondition;
 import pl.betoncraft.betonquest.compatibility.mythicmobs.MythicMobKillObjective;
 import pl.betoncraft.betonquest.compatibility.mythicmobs.MythicSpawnMobEvent;
+import pl.betoncraft.betonquest.compatibility.placeholderapi.BetonQuestPlaceholder;
+import pl.betoncraft.betonquest.compatibility.placeholderapi.PlaceholderVariable;
 import pl.betoncraft.betonquest.compatibility.playerpoints.PlayerPointsCondition;
 import pl.betoncraft.betonquest.compatibility.playerpoints.PlayerPointsEvent;
 import pl.betoncraft.betonquest.compatibility.quests.ConditionRequirement;
 import pl.betoncraft.betonquest.compatibility.quests.EventReward;
 import pl.betoncraft.betonquest.compatibility.quests.QuestCondition;
 import pl.betoncraft.betonquest.compatibility.quests.QuestEvent;
+import pl.betoncraft.betonquest.compatibility.racesandclasses.RaCClassCondition;
+import pl.betoncraft.betonquest.compatibility.racesandclasses.RaCClassEvent;
+import pl.betoncraft.betonquest.compatibility.racesandclasses.RaCClassVariable;
+import pl.betoncraft.betonquest.compatibility.racesandclasses.RaCExpCondition;
+import pl.betoncraft.betonquest.compatibility.racesandclasses.RaCExpEvent;
+import pl.betoncraft.betonquest.compatibility.racesandclasses.RaCExpVariable;
+import pl.betoncraft.betonquest.compatibility.racesandclasses.RaCLevelCondition;
+import pl.betoncraft.betonquest.compatibility.racesandclasses.RaCLevelEvent;
+import pl.betoncraft.betonquest.compatibility.racesandclasses.RaCLevelVariable;
+import pl.betoncraft.betonquest.compatibility.racesandclasses.RaCManaCondition;
+import pl.betoncraft.betonquest.compatibility.racesandclasses.RaCManaEvent;
+import pl.betoncraft.betonquest.compatibility.racesandclasses.RaCRaceCondition;
+import pl.betoncraft.betonquest.compatibility.racesandclasses.RaCRaceEvent;
+import pl.betoncraft.betonquest.compatibility.racesandclasses.RaCRaceVariable;
+import pl.betoncraft.betonquest.compatibility.racesandclasses.RaCTraitCondition;
 import pl.betoncraft.betonquest.compatibility.shopkeepers.HavingShopCondition;
 import pl.betoncraft.betonquest.compatibility.shopkeepers.OpenShopEvent;
 import pl.betoncraft.betonquest.compatibility.skillapi.SkillAPIClassCondition;
@@ -64,6 +91,7 @@ import pl.betoncraft.betonquest.compatibility.vault.MoneyCondition;
 import pl.betoncraft.betonquest.compatibility.vault.MoneyEvent;
 import pl.betoncraft.betonquest.compatibility.vault.MoneyVariable;
 import pl.betoncraft.betonquest.compatibility.vault.PermissionEvent;
+import pl.betoncraft.betonquest.compatibility.worldedit.PasteSchematicEvent;
 import pl.betoncraft.betonquest.compatibility.worldguard.RegionCondition;
 import pl.betoncraft.betonquest.compatibility.worldguard.RegionObjective;
 import pl.betoncraft.betonquest.utils.Debug;
@@ -83,6 +111,8 @@ public class Compatibility {
 	private Economy economy = null;
 
 	private EffectManager manager;
+	
+	private HologramLoop hologramLoop;
 
 	public Compatibility() {
 		instance = this;
@@ -102,6 +132,7 @@ public class Compatibility {
 			new CitizensWalkingListener();
 			plugin.registerObjectives("npckill", NPCKillObjective.class);
 			plugin.registerObjectives("npcinteract", NPCInteractObjective.class);
+			plugin.registerEvents("movenpc", NPCMoveEvent.class);
 			hooked.add("Citizens");
 		}
 
@@ -150,6 +181,13 @@ public class Compatibility {
 			plugin.registerConditions("region", RegionCondition.class);
 			plugin.registerObjectives("region", RegionObjective.class);
 			hooked.add("WorldGuard");
+		}
+
+		// hook into WorldEdit
+		if (Bukkit.getPluginManager().isPluginEnabled("WorldEdit")
+				&& plugin.getConfig().getString("hook.worldedit").equalsIgnoreCase("true")) {
+			plugin.registerEvents("paste", PasteSchematicEvent.class);
+			hooked.add("WorldEdit");
 		}
 
 		// hook into mcMMO
@@ -229,6 +267,56 @@ public class Compatibility {
 			plugin.registerConditions("shopamount", HavingShopCondition.class);
 			hooked.add("Shopkeepers");
 		}
+		
+		// hook into PlaceholderAPI
+		if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")
+				&& plugin.getConfig().getString("hook.placeholderapi").equalsIgnoreCase("true")) {
+			plugin.registerVariable("ph", PlaceholderVariable.class);
+			new BetonQuestPlaceholder(plugin, "betonquest").hook();
+			hooked.add("PlaceholderAPI");
+		}
+		
+		// hook into HolographicDisplays
+		if (Bukkit.getPluginManager().isPluginEnabled("HolographicDisplays")
+				&& plugin.getConfig().getString("hook.holographicdisplays").equalsIgnoreCase("true")) {
+			hologramLoop = new HologramLoop();
+			hooked.add("HolographicDisplays");
+		}
+		
+		// hook into RacesAndClasses
+		if (Bukkit.getPluginManager().isPluginEnabled("RacesAndClasses")
+				&& plugin.getConfig().getString("hook.racesandclasses").equalsIgnoreCase("true")) {
+			plugin.registerConditions("racclass", RaCClassCondition.class);
+			plugin.registerConditions("racrace", RaCRaceCondition.class);
+			plugin.registerConditions("racmana", RaCManaCondition.class);
+			plugin.registerConditions("racexp", RaCExpCondition.class);
+			plugin.registerConditions("raclevel", RaCLevelCondition.class);
+			plugin.registerConditions("ractrait", RaCTraitCondition.class);
+			plugin.registerEvents("racclass", RaCClassEvent.class);
+			plugin.registerEvents("racrace", RaCRaceEvent.class);
+			plugin.registerEvents("racmana", RaCManaEvent.class);
+			plugin.registerEvents("racexp", RaCExpEvent.class);
+			plugin.registerEvents("raclevel", RaCLevelEvent.class);
+			plugin.registerVariable("racclass", RaCClassVariable.class);
+			plugin.registerVariable("racrace", RaCRaceVariable.class);
+			plugin.registerVariable("racexp", RaCExpVariable.class);
+			plugin.registerVariable("raclevel", RaCLevelVariable.class);
+			hooked.add("RacesAndClasses");
+		}
+		
+		// hook into LegendQuest
+		if (Bukkit.getPluginManager().isPluginEnabled("LegendQuest")
+				&& plugin.getConfig().getString("hook.legendquest").equalsIgnoreCase("true")) {
+			plugin.registerConditions("lqclass", LQClassCondition.class);
+			plugin.registerConditions("lqrace", LQRaceCondition.class);
+			plugin.registerConditions("lqattribute", LQAttributeCondition.class);
+			plugin.registerConditions("lqkarma", LQKarmaCondition.class);
+			plugin.registerVariable("lqclass", LQClassVariable.class);
+			plugin.registerVariable("lqrace", LQRaceVariable.class);
+			plugin.registerVariable("lqattribute", LQAttributeVariable.class);
+			plugin.registerVariable("lqkarma", LQKarmaVariable.class);
+			hooked.add("LegendQuest");
+		}
 
 		// log which plugins have been hooked
 		if (hooked.size() > 0) {
@@ -269,6 +357,10 @@ public class Compatibility {
 		if (instance.hooked.contains("Citizens") && instance.hooked.contains("EffectLib")) {
 			CitizensParticle.reload();
 		}
+		if (instance.hooked.contains("HolographicDisplays")) {
+			instance.hologramLoop.cancel();
+			instance.hologramLoop = new HologramLoop();
+		}
 	}
 
 	/**
@@ -278,6 +370,9 @@ public class Compatibility {
 	public void disable() {
 		if (hooked.contains("EffectLib")) {
 			manager.dispose();
+		}
+		if (hooked.contains("HolographicDisplays")) {
+			hologramLoop.cancel();
 		}
 	}
 

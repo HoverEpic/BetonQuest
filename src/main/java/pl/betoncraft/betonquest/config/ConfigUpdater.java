@@ -1,6 +1,6 @@
 /**
  * BetonQuest - advanced quests for Bukkit
- * Copyright (C) 2015  Jakub "Co0sh" Sapalski
+ * Copyright (C) 2016  Jakub "Co0sh" Sapalski
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,13 +39,18 @@ import java.util.Set;
 import org.apache.commons.lang.StringUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.enchantments.Enchantment;
+import org.bukkit.entity.Item;
+import org.bukkit.inventory.ItemStack;
 
 import pl.betoncraft.betonquest.BetonQuest;
+import pl.betoncraft.betonquest.InstructionParseException;
 import pl.betoncraft.betonquest.QuestItem;
 import pl.betoncraft.betonquest.database.Connector;
 import pl.betoncraft.betonquest.database.Connector.QueryType;
@@ -83,7 +88,7 @@ public class ConfigUpdater {
 	 * Destination version. At the end of the updating process this will be the
 	 * current version
 	 */
-	private final String destination = "v40";
+	private final String destination = "v46";
 	/**
 	 * Deprecated ConfigHandler, used for updating older configuration files
 	 */
@@ -190,6 +195,235 @@ public class ConfigUpdater {
 		}
 		// update again until destination is reached
 		update();
+	}
+
+	@SuppressWarnings("unused")
+	private void update_from_v45() {
+		config.set("hook.legendquest", "true");
+		Debug.broadcast("Added compatibility with LegendQuest");
+		config.set("hook.worldedit", "true");
+		Debug.broadcast("Added compatibility with WorldEdit");
+		config.set("version", "v46");
+		instance.saveConfig();
+	}
+
+	@SuppressWarnings("unused")
+	private void update_from_v44() {
+		try {
+			Debug.info("Translating items in 'potion' objectives");
+			for (String packName : Config.getPackageNames()) {
+				Debug.info("  Handling " + packName + " package");
+				ConfigPackage pack = Config.getPackage(packName);
+				FileConfiguration objectives = pack.getObjectives().getConfig();
+				FileConfiguration items = pack.getItems().getConfig();
+				for (String key : objectives.getKeys(false)) {
+					String instruction = objectives.getString(key);
+					if (!instruction.startsWith("potion ")) {
+						continue;
+					}
+					Debug.info("    Found potion objective: '" + instruction + "'");
+					String[] parts = instruction.split(" ");
+					if (parts.length < 2) {
+						Debug.info("    It's incorrect.");
+						continue;
+					}
+					int data;
+					try {
+						data = Integer.parseInt(parts[1]);
+					} catch (NumberFormatException e) {
+						Debug.info("    It's incorrect");
+						continue;
+					}
+					ItemStack itemStack = new QuestItem("potion data:" + data).generateItem(1);
+					{
+						// it doesn't work without actually spawning the item in-game...
+						World world = Bukkit.getWorlds().get(0);
+						Location loc = new Location(world, 0, 254, 0);
+						Item item = world.dropItem(loc, itemStack);
+						itemStack = item.getItemStack();
+						item.remove();
+					}
+					String updatedInstruction = Utils.itemToString(itemStack);
+					Debug.info("    Potion instruction: '" + updatedInstruction + "'");
+					String item = null;
+					for (String itemKey : items.getKeys(false)) {
+						if (items.getString(itemKey).equals(updatedInstruction)) {
+							item = itemKey;
+						}
+					}
+					if (item == null) {
+						if (items.contains("potion")) {
+							int index = 2;
+							while (items.contains("potion" + index)) {
+								index++;
+							}
+							item = "potion" + index;
+						} else {
+							item = "potion";
+						}
+					}
+					Debug.info("    The item with this instruction has key " + item);
+					items.set(item, updatedInstruction);
+					objectives.set(key, instruction.replace(String.valueOf(data), item));
+				}
+				pack.getItems().saveConfig();
+				pack.getObjectives().saveConfig();
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+			Debug.error(ERROR);
+		}
+		Debug.broadcast("Translated items in 'potion' objective");
+		config.set("display_chat_after_conversation", "false");
+		Debug.broadcast("Added an option to display chat messages after the conversation");
+		config.set("version", "v45");
+		instance.saveConfig();
+	}
+
+	@SuppressWarnings("unused")
+	private void update_from_v43() {
+		try {
+			Debug.info("Translating potion instructions");
+			
+			for (String packName : Config.getPackageNames()) {
+				Debug.info("  Handling " + packName + " package");
+				ConfigPackage pack = Config.getPackage(packName);
+				FileConfiguration items = pack.getItems().getConfig();
+				for (String key : items.getKeys(false)) {
+					String instruction = items.getString(key);
+					if (!instruction.toLowerCase().startsWith("potion ") && !instruction.startsWith("splash_potion ")) {
+						continue;
+					}
+					Debug.info("    Found " + key + " potion with instruction '" + instruction + "'");
+					try {
+						QuestItem questItem = new QuestItem(instruction);
+						ItemStack itemStack = questItem.generateItem(1);
+						{
+							// it doesn't work without actually spawning the item in-game...
+							World world = Bukkit.getWorlds().get(0);
+							Location loc = new Location(world, 0, 254, 0);
+							Item item = world.dropItem(loc, itemStack);
+							itemStack = item.getItemStack();
+							item.remove();
+							// lol
+						}
+						String updatedInstruction = Utils.itemToString(itemStack);
+						Debug.info("    New instruction: '" + updatedInstruction + "'");
+						items.set(key, updatedInstruction);
+					} catch (InstructionParseException e) {
+						Debug.info("Item " + packName + "." + key + " was incorrect, skipping.");
+					}
+				}
+				pack.getItems().saveConfig();
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+			Debug.error(ERROR);
+		}
+		Debug.broadcast("Translated potions to a new format");
+		config.set("hook.racesandclasses", "true");
+		Debug.broadcast("Added compatibility with RacesAndClasses");
+		config.set("version", "v44");
+		instance.saveConfig();
+	}
+
+	@SuppressWarnings("unused")
+	private void update_from_v42() {
+		config.set("hook.holographicdisplays", "true");
+		Debug.broadcast("Added compatibility with HolographicDisplays");
+		config.set("version", "v43");
+		instance.saveConfig();
+	}
+
+	@SuppressWarnings("unused")
+	private void update_from_v41() {
+		try {
+			// change raw material names in craft objectives to items from items.yml
+			for (String packName : Config.getPackageNames()) {
+				ConfigPackage pack = Config.getPackage(packName);
+				ConfigAccessor objectives = pack.getObjectives();
+				ConfigAccessor items = pack.getItems();
+				ArrayList<String> materials = new ArrayList<>();
+				// get a list of materials and their data values
+				for (String key : objectives.getConfig().getKeys(false)) {
+					String objective = objectives.getConfig().getString(key);
+					if (objective.startsWith("craft ")) {
+						String[] parts = objective.split(" ");
+						if (parts.length > 1) {
+							materials.add(parts[1]);
+						}
+					}
+				}
+				// translate materials to item instructions
+				ArrayList<String> itemInstructions = new ArrayList<>();
+				for (String material : materials) {
+					if (material.contains(":")) {
+						String[] parts = material.split(":");
+						String materialName = parts[0];
+						String data = parts[1];
+						itemInstructions.add(materialName + " data:" + data);
+					} else {
+						itemInstructions.add(material);
+					}
+				}
+				// find items with the same instruction and store them in map (material, itemID)
+				HashMap<String, String> itemIDs = new HashMap<>();
+				for (int i = 0; i < materials.size(); i++) {
+					String material = materials.get(i);
+					String itemInstruction = itemInstructions.get(i);
+					String itemID = null;
+					// look for existing items
+					for (String key : items.getConfig().getKeys(false)) {
+						if (items.getConfig().getString(key).equalsIgnoreCase(itemInstruction)) {
+							itemID = key;
+							break;
+						}
+					}
+					// if there are no such items, create them
+					if (itemID == null) {
+						String materialName = material.contains(":") ? material.split(":")[0] : material;
+						if (items.getConfig().contains(materialName)) {
+							int index = 2;
+							while (items.getConfig().contains(materialName + index)) {
+								index++;
+							}
+							items.getConfig().set(materialName + index, itemInstruction);
+							itemID = materialName + index;
+						} else {
+							items.getConfig().set(materialName, itemInstruction);
+							itemID = materialName;
+						}
+					}
+					itemIDs.put(material, itemID);
+				}
+				items.saveConfig();
+				// replace materials in craft objectives
+				for (String key : objectives.getConfig().getKeys(false)) {
+					String objective = objectives.getConfig().getString(key);
+					if (objective.startsWith("craft ")) {
+						String[] parts = objective.split(" ");
+						if (parts.length > 1) {
+							objectives.getConfig().set(key, objective.replace(parts[1], itemIDs.get(parts[1])));
+						}
+					}
+				}
+				objectives.saveConfig();
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+			Debug.error(ERROR);
+		}
+		Debug.broadcast("Changed 'craft' objective to use items.yml");
+		config.set("version", "v42");
+		instance.saveConfig();
+	}
+
+	@SuppressWarnings("unused")
+	private void update_from_v40() {
+		config.set("hook.placeholderapi", "true");
+		Debug.broadcast("Added compatibility with PlaceholderAPI");
+		config.set("version", "v41");
+		instance.saveConfig();
 	}
 
 	@SuppressWarnings("unused")

@@ -1,6 +1,6 @@
 /**
  * BetonQuest - advanced quests for Bukkit
- * Copyright (C) 2015  Jakub "Co0sh" Sapalski
+ * Copyright (C) 2016  Jakub "Co0sh" Sapalski
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -60,8 +60,11 @@ public class CitizensWalkingListener implements Listener {
 				Navigator nav = npc.getNavigator();
 				npcs.put(npc, new Integer(1));
 				locs.put(npc, nav.getTargetAsLocation());
+				nav.setPaused(true);
+				nav.cancelNavigation();
 				nav.setTarget(conv.getNPC().getEntity().getLocation());
 				nav.setPaused(true);
+				nav.cancelNavigation();
 			} else {
 				npcs.put(npc, npcs.get(npc) + 1);
 			}

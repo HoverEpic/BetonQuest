@@ -1,6 +1,6 @@
 /**
  * BetonQuest - advanced quests for Bukkit
- * Copyright (C) 2015  Jakub "Co0sh" Sapalski
+ * Copyright (C) 2016  Jakub "Co0sh" Sapalski
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,11 +39,7 @@ public class ArmorCondition extends Condition {
 		if (parts.length < 2) {
 			throw new InstructionParseException("Armor not defined in: " + instructions);
 		}
-		String itemInstruction = pack.getString("items." + parts[1]);
-		if (itemInstruction == null) {
-			throw new InstructionParseException("No such item: " + parts[1]);
-		}
-		item = new QuestItem(itemInstruction);
+		item = QuestItem.newQuestItem(packName, parts[1]);
 	}
 
 	@Override

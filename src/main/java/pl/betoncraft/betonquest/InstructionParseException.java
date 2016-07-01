@@ -1,6 +1,6 @@
 /**
  * BetonQuest - advanced quests for Bukkit
- * Copyright (C) 2015  Jakub "Co0sh" Sapalski
+ * Copyright (C) 2016  Jakub "Co0sh" Sapalski
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@ package pl.betoncraft.betonquest;
  */
 public class InstructionParseException extends Exception {
 
-	private static final long serialVersionUID = 1L;
+	private static final long serialVersionUID = 7487088647464022627L;
 	private final String message;
 
 	public InstructionParseException(final String message) {

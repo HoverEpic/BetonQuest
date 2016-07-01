@@ -1,6 +1,6 @@
 /**
  * BetonQuest - advanced quests for Bukkit
- * Copyright (C) 2015  Jakub "Co0sh" Sapalski
+ * Copyright (C) 2016  Jakub "Co0sh" Sapalski
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -41,12 +41,8 @@ public class ConversationData {
 	private ConfigPackage pack;
 	private String convName;
 
-	private HashMap<String, String> quester = new HashMap<>(); // maps for
-																// multiple
-																// languages
-	private HashMap<String, String> prefix = new HashMap<>(); // global
-																// conversation
-																// prefix
+	private HashMap<String, String> quester = new HashMap<>(); // maps for multiple languages
+	private HashMap<String, String> prefix = new HashMap<>(); // global conversation prefix
 	private String[] finalEvents;
 	private String[] startingOptions;
 	private boolean blockMovement;
@@ -124,6 +120,10 @@ public class ConversationData {
 		}
 		// check if all starting options point to existing NPC options
 		startingOptions = rawStartingOptions.split(",");
+		// remove spaces between the options
+		for (int i = 0; i < startingOptions.length; i++) {
+			startingOptions[i] = startingOptions[i].trim();
+		}
 		for (String startingOption : startingOptions) {
 			if (startingOption.contains(".")) {
 				String entirePointer = pack.getName() + "." + convName + ".<starting_option>."
@@ -332,15 +332,15 @@ public class ConversationData {
 			FileConfiguration conv = pack.getConversation(convName).getConfig();
 			if (conv.isConfigurationSection(type + "." + name + ".prefix")) {
 				for (String lang : conv.getConfigurationSection(type + "." + name + ".prefix").getKeys(false)) {
-					String pref = pack
-							.getString("conversations." + convName + "." + type + "." + name + ".prefix." + lang);
+					String pref = pack .getString("conversations." + convName + "." + type + "." + name + ".prefix."
+							+ lang);
 					if (pref != null && !pref.equals("")) {
 						inlinePrefix.put(lang, pref);
 					}
 				}
 				if (!inlinePrefix.containsKey(defaultLang)) {
-					throw new InstructionParseException(
-							"No default language for " + name + " " + visibleType + " prefix");
+					throw new InstructionParseException("No default language for " + name + " " + visibleType
+							+ " prefix");
 				}
 			} else {
 				String pref = pack.getString("conversations." + convName + "." + type + "." + name + ".prefix");
@@ -350,14 +350,15 @@ public class ConversationData {
 			}
 			if (conv.isConfigurationSection(type + "." + name + ".text")) {
 				for (String lang : conv.getConfigurationSection(type + "." + name + ".text").getKeys(false)) {
-					text.put(lang,
-							pack.getString("conversations." + convName + "." + type + "." + name + ".text." + lang));
+					text.put(lang, pack.getString("conversations." + convName + "." + type + "." + name + ".text."
+							+ lang).replace("\\n", "\n"));
 				}
 				if (!text.containsKey(defaultLang)) {
 					throw new InstructionParseException("No default language for " + name + " " + visibleType);
 				}
 			} else {
-				text.put(defaultLang, pack.getString("conversations." + convName + "." + type + "." + name + ".text"));
+				text.put(defaultLang, pack.getString("conversations." + convName + "." + type + "." + name + ".text")
+						.replace("\\n", "\n"));
 			}
 			ArrayList<String> variables = new ArrayList<>();
 			for (String theText : text.values()) {

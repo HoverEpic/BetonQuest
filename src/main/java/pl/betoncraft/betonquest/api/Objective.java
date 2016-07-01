@@ -1,6 +1,6 @@
 /**
  * BetonQuest - advanced quests for Bukkit
- * Copyright (C) 2015  Jakub "Co0sh" Sapalski
+ * Copyright (C) 2016  Jakub "Co0sh" Sapalski
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,6 +28,7 @@ import pl.betoncraft.betonquest.config.Config;
 import pl.betoncraft.betonquest.config.ConfigPackage;
 import pl.betoncraft.betonquest.utils.Debug;
 import pl.betoncraft.betonquest.utils.PlayerConverter;
+import pl.betoncraft.betonquest.utils.Utils;
 
 /**
  * Superclass for all objectives. You need to extend it in order to create new
@@ -107,14 +108,10 @@ public abstract class Objective {
 		}
 		// add package names
 		for (int i = 0; i < events.length; i++) {
-			if (!events[i].contains(".")) {
-				events[i] = packName + "." + events[i];
-			}
+			events[i] = Utils.addPackage(packName, events[i]);
 		}
 		for (int i = 0; i < conditions.length; i++) {
-			if (!conditions[i].contains(".")) {
-				conditions[i] = packName + "." + conditions[i];
-			}
+			conditions[i] = Utils.addPackage(packName, conditions[i]);
 		}
 		persistent = tempPersistent;
 	}
@@ -211,7 +208,7 @@ public abstract class Objective {
 	 * @param instruction
 	 *            instruction string for player's data
 	 */
-	public final void addPlayer(String playerID, String instruction) {
+	public final synchronized void addPlayer(String playerID, String instruction) {
 		final String ERROR = "There was some error. Please send it to the developer: <coosheck@gmail.com>";
 		ObjectiveData data = null;
 		try {
@@ -244,7 +241,7 @@ public abstract class Objective {
 	 * @param playerID
 	 *            ID of the player
 	 */
-	public final void removePlayer(String playerID) {
+	public final synchronized void removePlayer(String playerID) {
 		dataMap.remove(playerID);
 		if (dataMap.isEmpty()) {
 			stop();

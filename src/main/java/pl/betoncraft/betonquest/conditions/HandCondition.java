@@ -1,6 +1,6 @@
 /**
  * BetonQuest - advanced quests for Bukkit
- * Copyright (C) 2015  Jakub "Co0sh" Sapalski
+ * Copyright (C) 2016  Jakub "Co0sh" Sapalski
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -41,12 +41,7 @@ public class HandCondition extends Condition {
 		if (parts.length < 2) {
 			throw new InstructionParseException("Item name not defined");
 		}
-		String itemName = parts[1];
-		String itemInstruction = pack.getString("items." + itemName);
-		if (itemInstruction == null) {
-			throw new InstructionParseException("Item not defined: " + itemName);
-		}
-		questItem = new QuestItem(itemInstruction);
+		questItem = QuestItem.newQuestItem(packName, parts[1]);
 		for (String part : parts) {
 			if (part.equalsIgnoreCase("offhand")) {
 				offhand = true;
@@ -58,7 +53,7 @@ public class HandCondition extends Condition {
 	@Override
 	public boolean check(String playerID) {
 		PlayerInventory inv = PlayerConverter.getPlayer(playerID).getInventory();
-		ItemStack item = (offhand) ? inv.getItemInMainHand() : inv.getItemInOffHand();
+		ItemStack item = (!offhand) ? inv.getItemInMainHand() : inv.getItemInOffHand();
 		if (questItem.equalsI(item)) {
 			return true;
 		}
