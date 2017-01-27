@@ -17,19 +17,20 @@
  */
 package pl.betoncraft.betonquest.events;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
 import pl.betoncraft.betonquest.BetonQuest;
+import pl.betoncraft.betonquest.Instruction;
+import pl.betoncraft.betonquest.Instruction.Item;
 import pl.betoncraft.betonquest.InstructionParseException;
-import pl.betoncraft.betonquest.QuestItem;
 import pl.betoncraft.betonquest.QuestRuntimeException;
 import pl.betoncraft.betonquest.VariableNumber;
 import pl.betoncraft.betonquest.api.QuestEvent;
 import pl.betoncraft.betonquest.config.Config;
+import pl.betoncraft.betonquest.item.QuestItem;
 import pl.betoncraft.betonquest.utils.PlayerConverter;
 import pl.betoncraft.betonquest.utils.Utils;
 
@@ -43,34 +44,10 @@ public class GiveEvent extends QuestEvent {
 	private final Item[] questItems;
 	private final boolean notify;
 
-	public GiveEvent(String packName, String instructions) throws InstructionParseException {
-		super(packName, instructions);
-		String[] parts = instructions.split(" ");
-		if (parts.length < 2) {
-			throw new InstructionParseException("Not enough arguments");
-		}
-		String[] items = parts[1].split(",");
-		notify = parts.length >= 3 && parts[2].equalsIgnoreCase("notify");
-		ArrayList<Item> list = new ArrayList<>();
-		for (int i = 0; i < items.length; i++) {
-			String rawItem = items[i];
-			String[] itemParts = rawItem.split(":");
-			String name = itemParts[0];
-			VariableNumber amount;
-			if (itemParts.length == 1) {
-				amount = new VariableNumber(1);
-			} else {
-				try {
-					amount = new VariableNumber(packName, itemParts[1]);
-				} catch (NumberFormatException e) {
-					throw new InstructionParseException("Wrong number format");
-				}
-			}
-			list.add(new Item(QuestItem.newQuestItem(packName, name), amount));
-		}
-		Item[] tempQuestItems = new Item[list.size()];
-		tempQuestItems = list.toArray(tempQuestItems);
-		questItems = tempQuestItems;
+	public GiveEvent(Instruction instruction) throws InstructionParseException {
+		super(instruction);
+		questItems = instruction.getItemList();
+		notify = instruction.hasArgument("notify");
 	}
 
 	@Override
@@ -94,7 +71,7 @@ public class GiveEvent extends QuestEvent {
 				} else {
 					stackSize = amountInt;
 				}
-				ItemStack item = questItem.generateItem(stackSize);
+				ItemStack item = questItem.generate(stackSize);
 				HashMap<Integer, ItemStack> left = player.getInventory().addItem(item);
 				for (Integer leftNumber : left.keySet()) {
 					ItemStack itemStack = left.get(leftNumber);
@@ -106,25 +83,6 @@ public class GiveEvent extends QuestEvent {
 				}
 				amountInt = amountInt - stackSize;
 			}
-		}
-	}
-
-	private class Item {
-
-		private final QuestItem item;
-		private final VariableNumber amount;
-
-		public Item(QuestItem item, VariableNumber amount) {
-			this.item = item;
-			this.amount = amount;
-		}
-
-		public QuestItem getItem() {
-			return item;
-		}
-
-		public VariableNumber getAmount() {
-			return amount;
 		}
 	}
 }

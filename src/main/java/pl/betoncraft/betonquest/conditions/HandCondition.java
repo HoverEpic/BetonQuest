@@ -20,9 +20,10 @@ package pl.betoncraft.betonquest.conditions;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 
+import pl.betoncraft.betonquest.Instruction;
 import pl.betoncraft.betonquest.InstructionParseException;
-import pl.betoncraft.betonquest.QuestItem;
 import pl.betoncraft.betonquest.api.Condition;
+import pl.betoncraft.betonquest.item.QuestItem;
 import pl.betoncraft.betonquest.utils.PlayerConverter;
 
 /**
@@ -33,28 +34,19 @@ import pl.betoncraft.betonquest.utils.PlayerConverter;
 public class HandCondition extends Condition {
 
 	private final QuestItem questItem;
-	private boolean offhand = false;
+	private final boolean offhand;
 
-	public HandCondition(String packName, String instructions) throws InstructionParseException {
-		super(packName, instructions);
-		String[] parts = instructions.split(" ");
-		if (parts.length < 2) {
-			throw new InstructionParseException("Item name not defined");
-		}
-		questItem = QuestItem.newQuestItem(packName, parts[1]);
-		for (String part : parts) {
-			if (part.equalsIgnoreCase("offhand")) {
-				offhand = true;
-				break;
-			}
-		}
+	public HandCondition(Instruction instruction) throws InstructionParseException {
+		super(instruction);
+		questItem = new QuestItem(instruction.getItem());
+		offhand = instruction.hasArgument("offhand");
 	}
 
 	@Override
 	public boolean check(String playerID) {
 		PlayerInventory inv = PlayerConverter.getPlayer(playerID).getInventory();
 		ItemStack item = (!offhand) ? inv.getItemInMainHand() : inv.getItemInOffHand();
-		if (questItem.equalsI(item)) {
+		if (questItem.compare(item)) {
 			return true;
 		}
 		return false;

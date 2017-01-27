@@ -27,6 +27,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.SignChangeEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.inventory.EquipmentSlot;
 
 import pl.betoncraft.betonquest.BetonQuest;
 import pl.betoncraft.betonquest.config.Config;
@@ -73,6 +74,11 @@ public class CubeNPCListener implements Listener {
 	 */
 	@EventHandler
 	public void onNPCClick(final PlayerInteractEvent event) {
+		// Only fire the event for the main hand to avoid that the event is triggered two times.
+		if (event.getHand() == EquipmentSlot.OFF_HAND && event.getHand() != null) {
+			return; // off hand packet, ignore.
+		}
+
 		if (event.isCancelled()) {
 			return;
 		}
@@ -111,11 +117,8 @@ public class CubeNPCListener implements Listener {
 					Config.sendMessage(PlayerConverter.getID(event.getPlayer()), "busy");
 					return;
 				}
-				String[] parts = assignment.split("\\.");
-				final String convName = parts[1];
-				final String packName = parts[0];
 				event.setCancelled(true);
-				new Conversation(PlayerConverter.getID(event.getPlayer()), packName, convName,
+				new Conversation(PlayerConverter.getID(event.getPlayer()), assignment,
 						event.getClickedBlock().getLocation().add(0.5, -1, 0.5));
 			} else {
 				Debug.error("Cannot start conversation: nothing assigned to " + conversationID);

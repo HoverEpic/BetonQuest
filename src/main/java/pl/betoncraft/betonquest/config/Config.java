@@ -23,9 +23,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 
 import org.bukkit.Sound;
 import org.bukkit.configuration.ConfigurationSection;
@@ -33,6 +34,7 @@ import org.bukkit.entity.Player;
 
 import pl.betoncraft.betonquest.BetonQuest;
 import pl.betoncraft.betonquest.InstructionParseException;
+import pl.betoncraft.betonquest.config.ConfigAccessor.AccessorType;
 import pl.betoncraft.betonquest.database.PlayerData;
 import pl.betoncraft.betonquest.utils.Debug;
 import pl.betoncraft.betonquest.utils.PlayerConverter;
@@ -56,7 +58,9 @@ public class Config {
 
 	private static String lang;
 
-	private static ArrayList<String> languages;
+	private static ArrayList<String> languages = new ArrayList<>();
+
+	private final static List<String> utilDirNames = Arrays.asList(new String[]{"logs", "backups", "conversations"});
 
 	private File root;
 
@@ -71,6 +75,10 @@ public class Config {
 	 *            controls if this object should log it's actions to the file
 	 */
 	public Config(boolean verboose) {
+		
+		packages.clear();
+		cancelers.clear();
+		languages.clear();
 
 		instance = this;
 		plugin = BetonQuest.getInstance();
@@ -83,25 +91,10 @@ public class Config {
 		plugin.reloadConfig();
 		plugin.saveConfig();
 
-		// if the packages are not on the config list yet, add them
-		List<String> packageList = plugin.getConfig().getStringList("packages");
-		if (plugin.getConfig().getStringList("packages") == null || packageList.isEmpty()) {
-			ArrayList<String> allPackages = new ArrayList<>();
-			for (File file : root.listFiles()) {
-				if (file.isDirectory() && !file.getName().equals("logs") && !file.getName().equals("backups")
-						&& !file.getName().equals("conversations")) {
-					allPackages.add(file.getName());
-				}
-			}
-			plugin.getConfig().set("packages", allPackages);
-			plugin.saveConfig();
-		}
-
 		// load messages
-		messages = new ConfigAccessor(plugin, new File(root, "messages.yml"), "messages.yml");
+		messages = new ConfigAccessor(new File(root, "messages.yml"), "messages.yml", AccessorType.OTHER);
 		messages.saveDefaultConfig();
-		internal = new ConfigAccessor(plugin, null, "internal-messages.yml");
-		languages = new ArrayList<>();
+		internal = new ConfigAccessor(null, "internal-messages.yml", AccessorType.OTHER);
 		for (String key : messages.getConfig().getKeys(false)) {
 			if (!key.equals("global")) {
 				if (verboose)
@@ -114,22 +107,8 @@ public class Config {
 		createPackage("default");
 
 		// load packages
-		for (String packPath : plugin.getConfig().getStringList("packages")) {
-			File file = new File(root, packPath.replace("-", File.separator));
-			// get directories which can be quest packages
-			if (!file.isDirectory())
-				continue;
-			if (file.getName().equals("logs") || file.getName().equals("backups")
-					|| file.getName().equals("conversations"))
-				continue;
-			// initialize ConfigPackage objects and if they are valid place them
-			// in the map
-			ConfigPackage pack = new ConfigPackage(file, packPath);
-			if (pack.isValid()) {
-				packages.put(packPath, pack);
-				if (verboose)
-					Debug.info("Loaded " + packPath + " package");
-			}
+		for (File file : plugin.getDataFolder().listFiles()) {
+			searchForPackages(file);
 		}
 
 		// load quest cancelers
@@ -144,6 +123,28 @@ public class Config {
 				} catch (InstructionParseException e) {
 					Debug.error("Could not load '" + name + "' quest canceler: " + e.getMessage());
 				}
+			}
+		}
+	}
+	
+	private void searchForPackages(File file) {
+		if (file.isDirectory() && !utilDirNames.contains(file.getName())) {
+			File[] content = file.listFiles();
+			for (File subFile : content) {
+				if (subFile.getName().equals("main.yml")) {
+					// this is a package, add it and stop searching
+					String packPath = BetonQuest.getInstance().getDataFolder()
+							.toURI().relativize(file.toURI())
+							.toString().replace('/', ' ').trim().replace(' ', '-');
+					ConfigPackage pack = new ConfigPackage(file, packPath);
+					if (pack.isEnabled()) {
+						packages.put(packPath, pack);
+					}
+					return;
+				}
+			}
+			for (File subFile : content) {
+				searchForPackages(subFile);
 			}
 		}
 	}
@@ -294,21 +295,10 @@ public class Config {
 	}
 
 	/**
-	 * Retrieves the ConfigPackage object for specified package
-	 * 
-	 * @param name
-	 *            name of the package which needs to be retrieved
-	 * @return the ConfigPackage object representing this package
+	 * @return the map of packages and their names
 	 */
-	public static ConfigPackage getPackage(String name) {
-		return packages.get(name);
-	}
-
-	/**
-	 * @return the set of names of valid packages
-	 */
-	public static Set<String> getPackageNames() {
-		return packages.keySet();
+	public static Map<String, ConfigPackage> getPackages() {
+		return packages;
 	}
 
 	/**

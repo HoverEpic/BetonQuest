@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-package pl.betoncraft.betonquest;
+package pl.betoncraft.betonquest.item;
 
 import java.util.List;
 import java.util.ListIterator;
@@ -29,7 +29,6 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
-import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryType;
@@ -41,6 +40,8 @@ import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
+import pl.betoncraft.betonquest.BetonQuest;
+import pl.betoncraft.betonquest.Journal;
 import pl.betoncraft.betonquest.config.Config;
 import pl.betoncraft.betonquest.utils.PlayerConverter;
 import pl.betoncraft.betonquest.utils.Utils;
@@ -59,19 +60,35 @@ public class QuestItemHandler implements Listener {
 		Bukkit.getPluginManager().registerEvents(this, BetonQuest.getInstance());
 	}
 
-	@EventHandler
+	@EventHandler(priority=EventPriority.HIGHEST)
 	public void onItemDrop(PlayerDropItemEvent event) {
+		if (event.isCancelled()) {
+			return;
+		}
 		if (event.getPlayer().getGameMode() == GameMode.CREATIVE) {
 			return;
 		}
 		String playerID = PlayerConverter.getID((Player) event.getPlayer());
+		if (playerID == null) {
+			return;
+		}
 		ItemStack item = event.getItemDrop().getItemStack();
-		// if journal is dropped, remove it so noone else can pick it up
-		if (Journal.isJournal(playerID, item)) {
-			event.getItemDrop().remove();
-		} else if (Utils.isQuestItem(item)) {
-			BetonQuest.getInstance().getPlayerData(playerID).addItem(item.clone(), item.getAmount());
-			event.getItemDrop().remove();
+		if (item == null) {
+			return;
+		}
+		try {
+			// if journal is dropped, remove it so noone else can pick it up
+			if (Journal.isJournal(playerID, item)) {
+				event.getItemDrop().remove();
+			} else if (Utils.isQuestItem(item)) {
+				BetonQuest.getInstance().getPlayerData(playerID).addItem(item.clone(), item.getAmount());
+				event.getItemDrop().remove();
+			}
+		} catch (Exception e) {
+			// if there is any problem with checking the item, prevent dropping it
+			// it will be frustrating for user but at least they won't duplicate items
+			event.setCancelled(true);
+			e.printStackTrace();
 		}
 	}
 
@@ -83,28 +100,28 @@ public class QuestItemHandler implements Listener {
 		if (event.getWhoClicked().getGameMode() == GameMode.CREATIVE) {
 			return;
 		}
-		if (event.getView().getType().equals(InventoryType.CREATIVE)) {
-			return;
-		}
-		if (event.getView().getType().equals(InventoryType.CRAFTING)) {
-			return;
-		}
 		String playerID = PlayerConverter.getID((Player) event.getWhoClicked());
-		// canceling all action that could lead to transfering the journal
-		if (Journal.isJournal(playerID, event.getCursor()) || Utils.isQuestItem(event.getCursor())) {
-			if (event.getAction().equals(InventoryAction.PLACE_ALL)
-					|| event.getAction().equals(InventoryAction.PLACE_ONE)
-					|| event.getAction().equals(InventoryAction.PLACE_SOME)) {
-				// this blocks normal clicking outside of the inventory
-				boolean isOutside = event.getRawSlot() < (event.getView().countSlots() - 36);
-				if (isOutside) {
-					event.setCancelled(true);
-				}
+		ItemStack item;
+		switch (event.getAction()) {
+		case MOVE_TO_OTHER_INVENTORY:
+			item = event.getCurrentItem();
+			break;
+		case PLACE_ALL:
+		case PLACE_ONE:
+		case PLACE_SOME:
+		case SWAP_WITH_CURSOR:
+			if (event.getClickedInventory().getType() != InventoryType.PLAYER) {
+				item = event.getCursor();
+			} else {
+				item = null;
 			}
-		} else if (event.getAction().equals(InventoryAction.MOVE_TO_OTHER_INVENTORY)) {
-			if (Journal.isJournal(playerID, event.getCurrentItem()) || Utils.isQuestItem(event.getCurrentItem())) {
-				event.setCancelled(true);
-			}
+			break;
+		default:
+			item = null;
+			break;
+		}
+		if (item != null && (Journal.isJournal(playerID, item) || Utils.isQuestItem(item))) {
+			event.setCancelled(true);
 		}
 	}
 
@@ -117,15 +134,8 @@ public class QuestItemHandler implements Listener {
 			return;
 		}
 		String playerID = PlayerConverter.getID((Player) event.getWhoClicked());
-		// this is moving the item across the inventory outside of Player's
-		// inventory
 		if (Journal.isJournal(playerID, event.getOldCursor()) || Utils.isQuestItem(event.getOldCursor())) {
-			for (Integer slot : event.getRawSlots()) {
-				if (slot < (event.getView().countSlots() - 36)) {
-					event.setCancelled(true);
-					return;
-				}
-			}
+			event.setCancelled(true);
 		}
 	}
 
@@ -201,9 +211,13 @@ public class QuestItemHandler implements Listener {
 
 	@EventHandler
 	public void onItemBreak(PlayerItemBreakEvent event) {
+		if (BetonQuest.getInstance().getConfig().getString("quest_items_unbreakable").equalsIgnoreCase("false")) {
+			return;
+		}
 		// prevent quest items from breaking
 		if (Utils.isQuestItem(event.getBrokenItem())) {
 			event.getBrokenItem().setAmount(1);
 		}
 	}
+
 }

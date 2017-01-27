@@ -20,43 +20,40 @@ package pl.betoncraft.betonquest.utils;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
-import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
 
+import pl.betoncraft.betonquest.BetonQuest;
 import pl.betoncraft.betonquest.InstructionParseException;
 import pl.betoncraft.betonquest.QuestRuntimeException;
-import pl.betoncraft.betonquest.VariableNumber;
+import pl.betoncraft.betonquest.api.Variable;
+import pl.betoncraft.betonquest.config.Config;
 
 /**
  * This class parses various location strings.
  */
 public class LocationData {
-	
+
 	private Location loc;
+	private Variable variable;
 	private Vector vector = null;
-	private VariableNumber data;
 	private Type type;
 	
 	private enum Type {
-		LOCATION, PLAYER
+		LOCATION, VARIABLE
 	}
 	
 	/**
-	 * Parses the location string. The Location and optional data value can
-	 * be accessed by this object's methods.
+	 * Parses the location string.
 	 * 
 	 * @param packName
 	 *            name of the package, required for variable resolution
 	 * @param string
 	 *            string containing raw location, written like
-	 *            '100;200;300;world;0;0;10', where the first three numbers
+	 *            '100;200;300;world;0;0', where the first three numbers
 	 *            are x,y,z coordinates, world is name of the world,
-	 *            followed by optional yaw and pitch, followed by optional
-	 *            data value (i.e. radius around location). This data value
-	 *            can be a conversation variable.
+	 *            followed by optional yaw and pitch.
 	 * @throws InstructionParseException
-	 *             when there is an error while parsing the location or
-	 *             optional variable
+	 *             when there is an error while parsing the location
 	 */
 	public LocationData(String packName, String string) throws InstructionParseException {
 		// parse the vector
@@ -64,14 +61,12 @@ public class LocationData {
 		if (string.contains("->")) {
 			String[] main = string.split("->");
 			if (main.length != 2) {
-				throw new InstructionParseException("Incorrect location format");
+				throw new InstructionParseException("Incorrect vector format (" + base + ")");
 			}
 			String vec = main[1];
 			if (!vec.matches("^\\(-?\\d+.?\\d*;-?\\d+.?\\d*;-?\\d+.?\\d*\\)(;.+)?$")) {
 				throw new InstructionParseException("Incorrect vector format");
 			}
-			String end = (vec.matches("^\\(-?\\d+.?\\d*;-?\\d+.?\\d*;-?\\d+.?\\d*\\)$")) ? ""
-					: vec.substring(vec.indexOf(')') + 1);
 			String[] numbers = vec.substring(1, vec.indexOf(')')).split(";");
 			double x, y, z;
 			try {
@@ -82,69 +77,67 @@ public class LocationData {
 				throw new InstructionParseException("Could not parse vector numbers");
 			}
 			vector = new Vector(x, y, z);
-			base = main[0] + end;
+			base = main[0];
 		} else {
 			vector = new Vector(0, 0, 0);
 			base = string;
 		}
+		// special keyword "player" is the same as %location% variable
+		// it's used for backwards compatibility
+		if (base.toLowerCase().equals("player")) {
+			base = "%location%";
+		}
 		// parse the base
-		if (base.startsWith("player")) {
-			type = Type.PLAYER;
-			// that's it, additional data will be parsed later
+		if (base.startsWith("%") && base.endsWith("%")) {
+			type = Type.VARIABLE;
+			variable = BetonQuest.createVariable(Config.getPackages().get(packName), base);
 		} else {
 			type = Type.LOCATION;
-			String[] parts = base.split(";");
-			if (parts.length < 4) {
-				throw new InstructionParseException("Wrong location format");
-			}
-			World world = Bukkit.getWorld(parts[3]);
-			if (world == null) {
-				throw new InstructionParseException("World " + parts[3] + " does not exists.");
-			}
-			double x, y, z;
-			float yaw = 0, pitch = 0;
-			try {
-				x = Double.parseDouble(parts[0]);
-				y = Double.parseDouble(parts[1]);
-				z = Double.parseDouble(parts[2]);
-				if (parts.length >= 6) {
-					yaw = Float.parseFloat(parts[4]);
-					pitch = Float.parseFloat(parts[5]);
-				}
-			} catch (NumberFormatException e) {
-				throw new InstructionParseException("Could not parse location coordinates");
-			}
-			loc = new Location(world, x, y, z, yaw, pitch);
-			// check if the last argument is data, if not return so it does not get parsed as data
-			if (parts.length != 5 && parts.length != 7) {
-				return;
-			}
+			loc = parseAbsoluteFormat(base);
 		}
-		// parse additional data (if base parsing returned before this code, it means there is no data here)
-		if (base.contains(";")) {
-			try {
-				data = new VariableNumber(packName, base.substring(base.lastIndexOf(';') + 1, base.length()));
-			} catch (NumberFormatException e) {
-				throw new InstructionParseException("Could not parse the location data value: " + e.getMessage());
-			}
+	}
+	
+	private Location parseAbsoluteFormat(String abs) throws InstructionParseException {
+		String[] parts = abs.split(";");
+		if (parts.length < 4) {
+			throw new InstructionParseException("Wrong location format (" + abs + ")");
 		}
+		World world = Bukkit.getWorld(parts[3]);
+		if (world == null) {
+			throw new InstructionParseException("World " + parts[3] + " does not exists.");
+		}
+		double x, y, z;
+		float yaw = 0, pitch = 0;
+		try {
+			x = Double.parseDouble(parts[0]);
+			y = Double.parseDouble(parts[1]);
+			z = Double.parseDouble(parts[2]);
+			if (parts.length == 6) {
+				yaw = Float.parseFloat(parts[4]);
+				pitch = Float.parseFloat(parts[5]);
+			}
+		} catch (NumberFormatException e) {
+			throw new InstructionParseException("Could not parse location coordinates");
+		}
+		loc = new Location(world, x, y, z, yaw, pitch);
+		return loc;
 	}
 	
 	private Location getBaseLoc(String playerID) throws QuestRuntimeException {
 		switch (type) {
 		case LOCATION:
 			return loc;
-		case PLAYER:
+		case VARIABLE:
 			if (playerID == null) {
-				throw new QuestRuntimeException("Location in 'player' format cannot be accessed without the player;"
+				throw new QuestRuntimeException("Variable location cannot accessed without the player;"
 						+ " consider changing it to absolute coordinates");
 			}
-			Player player = PlayerConverter.getPlayer(playerID);
-			if (player == null) {
-				throw new QuestRuntimeException("Location cannot be accessed because player is offline;"
-						+ " consider changing it to absolute coordinates");
+			String value = variable.getValue(playerID);
+			try {
+				return loc = parseAbsoluteFormat(value);
+			} catch (InstructionParseException e) {
+				throw new QuestRuntimeException("Could not resolve a variable to location format: " + e.getMessage());
 			}
-			return player.getLocation();
 		default: return null;
 		}
 	}
@@ -153,19 +146,12 @@ public class LocationData {
 	 * @param playerID
 	 *            ID of the player, needed for location resolution
 	 * @return the location represented by this object
-	 * @throws InstructionParseException
+	 * @throws QuestRuntimeException
 	 *             when location is defined for the player but the player cannot
 	 *             be accessed
 	 */
 	public Location getLocation(String playerID) throws QuestRuntimeException {
 		return getBaseLoc(playerID).clone().add(vector);
-	}
-	
-	/**
-	 * @return the data variable
-	 */
-	public VariableNumber getData() {
-		return data;
 	}
 	
 }

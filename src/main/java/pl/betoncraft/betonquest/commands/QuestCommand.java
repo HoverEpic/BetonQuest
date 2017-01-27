@@ -27,6 +27,7 @@ import java.util.List;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -35,22 +36,23 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitRunnable;
 
 import pl.betoncraft.betonquest.BetonQuest;
-import pl.betoncraft.betonquest.GlobalLocations;
+import pl.betoncraft.betonquest.ConditionID;
+import pl.betoncraft.betonquest.EventID;
 import pl.betoncraft.betonquest.InstructionParseException;
+import pl.betoncraft.betonquest.ItemID;
 import pl.betoncraft.betonquest.Journal;
+import pl.betoncraft.betonquest.ObjectNotFoundException;
+import pl.betoncraft.betonquest.ObjectiveID;
 import pl.betoncraft.betonquest.Point;
 import pl.betoncraft.betonquest.Pointer;
-import pl.betoncraft.betonquest.QuestItem;
-import pl.betoncraft.betonquest.StaticEvents;
 import pl.betoncraft.betonquest.api.Objective;
-import pl.betoncraft.betonquest.compatibility.Compatibility;
 import pl.betoncraft.betonquest.config.Config;
 import pl.betoncraft.betonquest.config.ConfigAccessor;
 import pl.betoncraft.betonquest.config.ConfigPackage;
-import pl.betoncraft.betonquest.conversation.ConversationColors;
 import pl.betoncraft.betonquest.database.Connector.UpdateType;
 import pl.betoncraft.betonquest.database.PlayerData;
 import pl.betoncraft.betonquest.database.Saver.Record;
+import pl.betoncraft.betonquest.item.QuestItem;
 import pl.betoncraft.betonquest.utils.Debug;
 import pl.betoncraft.betonquest.utils.PlayerConverter;
 import pl.betoncraft.betonquest.utils.Updater;
@@ -227,7 +229,8 @@ public class QuestCommand implements CommandExecutor {
 				break;
 			case "reload":
 				// just reloading
-				reloadPlugin();
+				defaultPack = Config.getString("config.default_package");
+				instance.reload();
 				sendMessage(sender, "reloaded");
 				break;
 			case "backup":
@@ -268,11 +271,11 @@ public class QuestCommand implements CommandExecutor {
 			sendMessage(sender, "specify_item");
 			return;
 		}
-		String itemID = Utils.addPackage(Config.getDefaultPackage(), args[1]);
 		try {
-			QuestItem item = QuestItem.newQuestItem(Config.getDefaultPackage(), itemID);
-			((Player) sender).getInventory().addItem(item.generateItem(1));
-		} catch (InstructionParseException e) {
+			ItemID itemID = new ItemID(null, args[1]);
+			QuestItem item = new QuestItem(itemID);
+			((Player) sender).getInventory().addItem(item.generate(1));
+		} catch (InstructionParseException | ObjectNotFoundException e) {
 			sendMessage(sender, "error", new String[]{e.getMessage()});
 			Debug.error("Error while creating an item: " + e.getMessage());
 		}
@@ -581,26 +584,27 @@ public class QuestCommand implements CommandExecutor {
 		Player player = (Player) sender;
 		ItemStack item = player.getInventory().getItemInMainHand();
 		// if item is air then there is nothing to add to items.yml
-		if (item == null) {
+		if (item == null || item.getType() == Material.AIR) {
 			Debug.info("Cannot continue, item must not be air");
 			sendMessage(sender, "no_item");
 			return;
 		}
 		// define parts of the final string
-		ConfigPackage configPack = Config.getPackage(pack);
+		ConfigPackage configPack = Config.getPackages().get(pack);
 		if (configPack == null) {
 			Debug.info("Cannot continue, package does not exist");
 			sendMessage(sender, "specify_package");
 			return;
 		}
 		ConfigAccessor config = configPack.getItems();
-		String instructions = Utils.itemToString(item);
+		String instructions = QuestItem.itemToString(item);
 		// save it in items.yml
 		Debug.info("Saving item to configuration as " + args[1]);
 		config.getConfig().set(name, instructions.trim());
 		config.saveConfig();
 		// done
 		sendMessage(sender, "item_created", new String[] { args[1] });
+		
 	}
 
 	/**
@@ -619,38 +623,16 @@ public class QuestCommand implements CommandExecutor {
 			sendMessage(sender, "specify_event");
 			return;
 		}
-		String eventID = args[2];
-		String pack;
-		String name;
-		if (eventID.contains(".")) {
-			String[] parts = eventID.split("\\.");
-			if (parts.length != 2) {
-				Debug.info("Condition's ID is missing");
-				sendMessage(sender, "specify_condition");
-				return;
-			}
-			pack = parts[0];
-			name = parts[1];
-		} else {
-			pack = defaultPack;
-			name = eventID;
-			eventID = pack + "." + name;
-		}
-		ConfigPackage configPack = Config.getPackage(pack);
-		if (configPack == null) {
-			Debug.info("Cannot continue, package does not exist");
-			sendMessage(sender, "specify_package");
-			return;
-		}
-		// the event ID
-		if (args.length < 3 || configPack.getEvents().getConfig().getString(name) == null) {
-			Debug.info("Event's ID is missing or it's not defined");
-			sendMessage(sender, "specify_event");
+		EventID eventID;
+		try {
+			eventID = new EventID(null, args[2]);
+		} catch (ObjectNotFoundException e) {
+			sendMessage(sender, "error", new String[]{ e.getMessage() });
 			return;
 		}
 		// fire the event
 		BetonQuest.event(playerID, eventID);
-		sendMessage(sender, "player_event", new String[] { configPack.getString("events." + name) });
+		sendMessage(sender, "player_event", new String[] { eventID.generateInstruction().getInstruction() });
 	}
 
 	/**
@@ -670,36 +652,17 @@ public class QuestCommand implements CommandExecutor {
 			sendMessage(sender, "specify_condition");
 			return;
 		}
-		String conditionID = args[2].replace("!", "");
-		boolean inverted = args[2].contains("!");
-		String pack;
-		String name;
-		if (conditionID.contains(".")) {
-			String[] parts = conditionID.split("\\.");
-			pack = parts[0];
-			name = parts[1];
-		} else {
-			pack = defaultPack;
-			name = conditionID;
-			conditionID = pack + "." + name;
-		}
-		ConfigPackage configPack = Config.getPackage(pack);
-		if (configPack == null) {
-			Debug.info("Cannot continue, package does not exist");
-			sendMessage(sender, "specify_package");
-			return;
-		}
-		if (configPack.getConditions().getConfig().getString(name) == null) {
-			Debug.info("Condition is not defined");
-			sendMessage(sender, "specify_condition");
+		ConditionID conditionID;
+		try {
+			conditionID = new ConditionID(null, args[2]);
+		} catch (ObjectNotFoundException e) {
+			sendMessage(sender, "error", new String[]{ e.getMessage() });
 			return;
 		}
 		// display message about condition
-		sendMessage(sender, "player_condition",
-				new String[] { (inverted ? "! " : "") + configPack.getString("conditions." + name),
-						Boolean.toString(BetonQuest.condition(playerID, conditionID)) });
-		// .replaceAll("%condition%", ).replaceAll("%outcome%", BetonQuest
-		// .condition(playerID, conditionID) + ""));
+		sendMessage(sender, "player_condition", new String[] { (conditionID.inverted() ? "! " : "")
+				+ conditionID.generateInstruction().getInstruction(),
+				Boolean.toString(BetonQuest.condition(playerID, conditionID)) });
 	}
 
 	/**
@@ -816,20 +779,25 @@ public class QuestCommand implements CommandExecutor {
 			sendMessage(sender, "specify_objective");
 			return;
 		}
-		// if there are arguments, handle them
+		// get the objective
+		ObjectiveID objectiveID;
+		try {
+			objectiveID = new ObjectiveID(null, args[3]);
+		} catch (ObjectNotFoundException e) {
+			sendMessage(sender, "error", new String[]{ e.getMessage() });
+			return;
+		}
+		Objective objective = BetonQuest.getInstance().getObjective(objectiveID);
+		if (objective == null) {
+			sendMessage(sender, "specify_objective");
+			return;
+		}
 		switch (args[2].toLowerCase()) {
+		case "start":
+		case "s":
 		case "add":
 		case "a":
-			// get the instruction
-			Debug.info("Adding new objective for player " + PlayerConverter.getName(playerID));
-			String objectiveID = args[3];
-			if (!objectiveID.contains(".")) {
-				objectiveID = defaultPack + "." + args[3];
-			}
-			if (BetonQuest.getInstance().getObjective(objectiveID) == null) {
-				sendMessage(sender, "specify_objective");
-				return;
-			}
+			Debug.info("Adding new objective " + objectiveID + " for player " + PlayerConverter.getName(playerID));
 			// add the objective
 			if (isOnline) {
 				BetonQuest.newObjective(playerID, objectiveID);
@@ -843,19 +811,20 @@ public class QuestCommand implements CommandExecutor {
 		case "del":
 		case "r":
 		case "d":
-			// remove the objective
-			String objectiveID2 = args[3];
-			if (!objectiveID2.contains(".")) {
-				objectiveID2 = defaultPack + "." + args[3];
-			}
-			Debug.info("Deleting objective with tag " + args[3] + " for player " + PlayerConverter.getName(playerID));
-			if (BetonQuest.getInstance().getObjective(objectiveID2) == null) {
-				sendMessage(sender, "specify_objective");
-				return;
-			}
-			BetonQuest.getInstance().getObjective(objectiveID2).removePlayer(playerID);
-			playerData.removeRawObjective(objectiveID2);
+			Debug.info("Deleting objective " + objectiveID + " for player " + PlayerConverter.getName(playerID));
+			objective.removePlayer(playerID);
+			playerData.removeRawObjective(objectiveID);
 			sendMessage(sender, "objective_removed");
+			break;
+		case "complete":
+		case "c":
+			Debug.info("Completing objective " + objectiveID + " for player " + PlayerConverter.getName(playerID));
+			if (isOnline) {
+				objective.completeObjective(playerID);
+			} else {
+				playerData.removeRawObjective(objectiveID);
+			}
+			sendMessage(sender, "objective_completed");
 			break;
 		default:
 			// if there was something else, display error message
@@ -965,24 +934,27 @@ public class QuestCommand implements CommandExecutor {
 		case "o":
 			updateType = UpdateType.RENAME_ALL_OBJECTIVES;
 			// get ID and package
-			String[] parts = name.split("\\.");
-			String packName = parts[0];
-			String objName = parts[1];
-			ConfigPackage pack = Config.getPackage(packName);
-			if (pack == null) {
-				sendMessage(sender, "specify_package");
+			ObjectiveID nameID;
+			try {
+				nameID = new ObjectiveID(null, name);
+			} catch (ObjectNotFoundException e) {
+				sendMessage(sender, "error", new String[]{ e.getMessage() });
 				return;
 			}
 			// rename objective in the file
-			String objective = pack.getObjectives().getConfig().getString(objName);
-			if (objective != null) {
-				pack.getObjectives().getConfig().set(rename.split("\\.")[1], objective);
-				pack.getObjectives().getConfig().set(objName, null);
-				pack.getObjectives().saveConfig();
-			}
+			nameID.getPackage().getObjectives().getConfig().set(rename.split("\\.")[1], nameID.generateInstruction().getInstruction());
+			nameID.getPackage().getObjectives().saveConfig();
 			// rename objective instance
-			BetonQuest.getInstance().renameObjective(name, rename);
-			BetonQuest.getInstance().getObjective(rename).setLabel(rename);
+			ObjectiveID renameID;
+			try {
+				renameID = new ObjectiveID(null, rename);
+			} catch (ObjectNotFoundException e) {
+				// this should not happen
+				e.printStackTrace();
+				return;
+			}
+			BetonQuest.getInstance().renameObjective(nameID, renameID);
+			BetonQuest.getInstance().getObjective(renameID).setLabel(renameID);
 			// renaming an active objective probably isn't needed
 			for (Player player : Bukkit.getOnlinePlayers()) {
 				String playerID = PlayerConverter.getID(player);
@@ -1000,10 +972,12 @@ public class QuestCommand implements CommandExecutor {
 					continue;
 				if (data == null)
 					data = "";
-				BetonQuest.getInstance().getObjective(name).removePlayer(playerID);
-				BetonQuest.getInstance().getPlayerData(playerID).removeRawObjective(name);
-				BetonQuest.resumeObjective(PlayerConverter.getID(player), rename, data);
+				BetonQuest.getInstance().getObjective(nameID).removePlayer(playerID);
+				BetonQuest.getInstance().getPlayerData(playerID).removeRawObjective(nameID);
+				BetonQuest.resumeObjective(PlayerConverter.getID(player), renameID, data);
 			}
+			nameID.getPackage().getObjectives().getConfig().set(nameID.getBaseID(), null);
+			nameID.getPackage().getObjectives().saveConfig();
 			break;
 		case "journals":
 		case "journal":
@@ -1072,10 +1046,17 @@ public class QuestCommand implements CommandExecutor {
 		case "objective":
 		case "o":
 			updateType = UpdateType.REMOVE_ALL_OBJECTIVES;
+			ObjectiveID objectiveID;
+			try {
+				objectiveID = new ObjectiveID(null, name);
+			} catch (ObjectNotFoundException e) {
+				sendMessage(sender, "error", new String[]{ e.getMessage() });
+				return;
+			}
 			for (Player player : Bukkit.getOnlinePlayers()) {
 				String playerID = PlayerConverter.getID(player);
-				BetonQuest.getInstance().getObjective(name).removePlayer(playerID);
-				BetonQuest.getInstance().getPlayerData(playerID).removeRawObjective(name);
+				BetonQuest.getInstance().getObjective(objectiveID).removePlayer(playerID);
+				BetonQuest.getInstance().getPlayerData(playerID).removeRawObjective(objectiveID);
 			}
 			break;
 		case "journals":
@@ -1097,39 +1078,6 @@ public class QuestCommand implements CommandExecutor {
 		}
 		BetonQuest.getInstance().getSaver().add(new Record(updateType, new String[] { name }));
 		sendMessage(sender, "everything_removed");
-	}
-
-	/**
-	 * Reloads the configuration.
-	 */
-	private void reloadPlugin() {
-		// reload the configuration
-		Debug.info("Reloading configuration");
-		new Config();
-		defaultPack = Config.getString("config.default_package");
-		// reload updater settings
-		BetonQuest.getInstance().getUpdater().reload();
-		// load new static events
-		new StaticEvents();
-		// stop current global locations listener
-		// and start new one with reloaded configs
-		Debug.info("Restarting global locations");
-		GlobalLocations.stop();
-		new GlobalLocations().runTaskTimer(instance, 0, 20);
-		new ConversationColors();
-		Compatibility.reload();
-		// load all events, conditions, objectives, conversations etc.
-		instance.loadData();
-		// start objectives and update journals for every online player
-		for (Player player : Bukkit.getOnlinePlayers()) {
-			String playerID = PlayerConverter.getID(player);
-			Debug.info("Updating journal for player " + PlayerConverter.getName(playerID));
-			PlayerData playerData = instance.getPlayerData(playerID);
-			Journal journal = playerData.getJournal();
-			journal.update();
-		}
-		// initialize new debugger
-		new Debug();
 	}
 
 	/**

@@ -18,10 +18,10 @@
 package pl.betoncraft.betonquest.variables;
 
 import pl.betoncraft.betonquest.BetonQuest;
+import pl.betoncraft.betonquest.Instruction;
 import pl.betoncraft.betonquest.InstructionParseException;
 import pl.betoncraft.betonquest.Point;
 import pl.betoncraft.betonquest.api.Variable;
-import pl.betoncraft.betonquest.utils.Utils;
 
 /**
  * Allows you to display total amount of points or amount of points remaining to
@@ -35,19 +35,20 @@ public class PointVariable extends Variable {
 	private Type type;
 	private int amount;
 
-	public PointVariable(String packName, String instruction) throws InstructionParseException {
-		super(packName, instruction);
-		String[] parts = instruction.replace("%", "").split("\\.");
-		if (parts.length != 3) {
-			throw new InstructionParseException("Incorrect number of arguments");
+	public PointVariable(Instruction instruction) throws InstructionParseException {
+		super(instruction);
+		category = instruction.next();
+		if (category.contains("*")) {
+			category = category.replace('*', '.');
+		} else {
+			category = instruction.getPackage().getName() + "." + category;
 		}
-		category = Utils.addPackage(packName, parts[1]);
-		if (parts[2].equalsIgnoreCase("amount")) {
+		if (instruction.next().equalsIgnoreCase("amount")) {
 			type = Type.AMOUNT;
-		} else if (parts[2].toLowerCase().startsWith("left:")) {
+		} else if (instruction.current().toLowerCase().startsWith("left:")) {
 			type = Type.LEFT;
 			try {
-				amount = Integer.parseInt(parts[2].substring(5));
+				amount = Integer.parseInt(instruction.current().substring(5));
 			} catch (NumberFormatException e) {
 				throw new InstructionParseException("Could not parse point amount");
 			}

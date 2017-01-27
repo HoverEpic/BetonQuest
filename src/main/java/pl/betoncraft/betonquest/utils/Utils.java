@@ -28,26 +28,22 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 
-import org.bukkit.Bukkit;
+import org.bukkit.Color;
+import org.bukkit.DyeColor;
 import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.BookMeta;
-import org.bukkit.inventory.meta.EnchantmentStorageMeta;
-import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.inventory.meta.LeatherArmorMeta;
-import org.bukkit.inventory.meta.PotionMeta;
-import org.bukkit.inventory.meta.SkullMeta;
-import org.bukkit.potion.PotionData;
-import org.bukkit.potion.PotionEffect;
 
 import pl.betoncraft.betonquest.BetonQuest;
+import pl.betoncraft.betonquest.ConditionID;
+import pl.betoncraft.betonquest.InstructionParseException;
 import pl.betoncraft.betonquest.config.Config;
 import pl.betoncraft.betonquest.config.ConfigAccessor;
+import pl.betoncraft.betonquest.config.ConfigPackage;
 import pl.betoncraft.betonquest.config.Zipper;
+import pl.betoncraft.betonquest.config.ConfigAccessor.AccessorType;
 import pl.betoncraft.betonquest.database.Connector;
 import pl.betoncraft.betonquest.database.Connector.QueryType;
 import pl.betoncraft.betonquest.database.Connector.UpdateType;
@@ -102,7 +98,7 @@ public class Utils {
 			boolean done = true;
 			// prepare the config file
 			databaseBackupFile.createNewFile();
-			ConfigAccessor accessor = new ConfigAccessor(instance, databaseBackupFile, databaseBackupFile.getName());
+			ConfigAccessor accessor = new ConfigAccessor(databaseBackupFile, databaseBackupFile.getName(), AccessorType.OTHER);
 			FileConfiguration config = accessor.getConfig();
 			// prepare the database and map
 			HashMap<String, ResultSet> map = new HashMap<>();
@@ -174,21 +170,20 @@ public class Utils {
 	 *            pages
 	 * @return the list of pages for a book
 	 */
-	public static List<String> pagesFromString(String string, boolean singleString) {
+	public static List<String> pagesFromString(String string) {
 		List<String> pages = new ArrayList<>();
+		List<String> bigPages = Arrays.asList(string.split("\\|"));
 		int chars = Integer.parseInt(Config.getString("config.journal.chars_per_page"));
-		if (singleString) {
+		for (String bigPage : bigPages) {
 			StringBuilder page = new StringBuilder();
-			for (String word : string.split(" ")) {
+			for (String word : bigPage.split(" ")) {
 				if (page.length() + word.length() + 1 > chars) {
 					pages.add(page.toString().trim());
 					page = new StringBuilder();
 				}
 				page.append(word + " ");
 			}
-			pages.add(page.toString().trim());
-		} else {
-			pages = Arrays.asList(string.replaceAll("\\\\n", "\n").split("\\|"));
+			pages.add(page.toString().trim().replaceAll("\\\\n", "\n"));
 		}
 		return pages;
 	}
@@ -224,7 +219,7 @@ public class Utils {
 						+ "forever. Because of that the loading of backup was aborted!");
 				return;
 			}
-			ConfigAccessor accessor = new ConfigAccessor(instance, file, "database-backup.yml");
+			ConfigAccessor accessor = new ConfigAccessor(file, "database-backup.yml", AccessorType.OTHER);
 			FileConfiguration config = accessor.getConfig();
 			Database database = instance.getDB();
 			// create tables if they don't exist, so we can be 100% sure
@@ -308,110 +303,6 @@ public class Utils {
 	}
 
 	/**
-	 * Converts ItemStack to string, which can be later parsed by QuestItem
-	 * 
-	 * @param item
-	 *            ItemStack to convert
-	 * @return converted string
-	 */
-	@SuppressWarnings("deprecation")
-	public static String itemToString(ItemStack item) {
-		String name = "";
-		String lore = "";
-		String enchants = "";
-		String title = "";
-		String text = "";
-		String author = "";
-		String effects = "";
-		String color = "";
-		String owner = "";
-		ItemMeta meta = item.getItemMeta();
-		// get display name
-		if (meta.hasDisplayName()) {
-			name = " name:" + meta.getDisplayName().replace(" ", "_");
-		}
-		// get lore
-		if (meta.hasLore()) {
-			StringBuilder string = new StringBuilder();
-			for (String line : meta.getLore()) {
-				string.append(line + ";");
-			}
-			lore = " lore:" + string.substring(0, string.length() - 1).replace(" ", "_");
-		}
-		// get enchants
-		if (meta.hasEnchants()) {
-			StringBuilder string = new StringBuilder();
-			for (Enchantment enchant : meta.getEnchants().keySet()) {
-				string.append(enchant.getName() + ":" + meta.getEnchants().get(enchant) + ",");
-			}
-			enchants = " enchants:" + string.substring(0, string.length() - 1);
-		}
-		// check if it's a book and add title, author and text if so
-		if (meta instanceof BookMeta) {
-			BookMeta bookMeta = (BookMeta) meta;
-			if (bookMeta.hasAuthor()) {
-				author = " author:" + bookMeta.getAuthor().replace(" ", "_");
-			}
-			if (bookMeta.hasTitle()) {
-				title = " title:" + bookMeta.getTitle().replace(" ", "_");
-			}
-			if (bookMeta.hasPages()) {
-				StringBuilder strBldr = new StringBuilder();
-				for (String page : bookMeta.getPages()) {
-					if (page.startsWith("\"") && page.endsWith("\"")) {
-						page = page.substring(1, page.length() - 1);
-					}
-					strBldr.append(page.replaceAll(" ", "_").replaceAll("\\n", "\\\\n") + "|");
-				}
-				text = " text:" + strBldr.substring(0, strBldr.length() - 1);
-			}
-		}
-		// check if it's a potion and add effect type, duration and power if so
-		if (meta instanceof PotionMeta) {
-			PotionMeta potionMeta = (PotionMeta) meta;
-			PotionData pData = potionMeta.getBasePotionData();
-			effects = " type:" + pData.getType().toString() + (pData.isExtended() ? " extended" : "")
-					+ (pData.isUpgraded() ? " upgraded" : "");
-			if (potionMeta.hasCustomEffects()) {
-				StringBuilder string = new StringBuilder();
-				for (PotionEffect effect : potionMeta.getCustomEffects()) {
-					int power = effect.getAmplifier() + 1;
-					int duration = (effect.getDuration() - (effect.getDuration() % 20)) / 20;
-					string.append(effect.getType().getName() + ":" + power + ":" + duration + ",");
-				}
-				effects += " effects:" + string.substring(0, string.length() - 1);
-			}
-		}
-		// check for leather armor color
-		if (meta instanceof LeatherArmorMeta) {
-			LeatherArmorMeta armorMeta = (LeatherArmorMeta) meta;
-			if (!armorMeta.getColor().equals(Bukkit.getServer().getItemFactory().getDefaultLeatherColor())) {
-				color = " color:" + armorMeta.getColor().asRGB();
-			}
-		}
-		// check for enchanted book
-		if (meta instanceof EnchantmentStorageMeta) {
-			EnchantmentStorageMeta storageMeta = (EnchantmentStorageMeta) meta;
-			if (storageMeta.hasStoredEnchants()) {
-				StringBuilder string = new StringBuilder();
-				for (Enchantment enchant : storageMeta.getStoredEnchants().keySet()) {
-					string.append(enchant.getName() + ":" + storageMeta.getStoredEnchants().get(enchant) + ",");
-				}
-				enchants = " enchants:" + string.substring(0, string.length() - 1);
-			}
-		}
-		if (meta instanceof SkullMeta) {
-			SkullMeta skullMeta = (SkullMeta) meta;
-			if (skullMeta.hasOwner()) {
-				owner = " owner:" + skullMeta.getOwner();
-			}
-		}
-		// put it all together in a single string
-		return item.getType() + " data:" + item.getData().getData() + name + lore + enchants + title + author + text
-				+ effects + color + owner;
-	}
-
-	/**
 	 * Checks if the ItemStack is a quest item
 	 * 
 	 * @param item
@@ -429,7 +320,7 @@ public class Utils {
 		return false;
 	}
 
-	public static ArrayList<String> getParty(String playerID, double range, String pack, String[] conditions) {
+	public static ArrayList<String> getParty(String playerID, double range, String pack, ConditionID[] conditions) {
 		final ArrayList<String> list = new ArrayList<>();
 		Player player = PlayerConverter.getPlayer(playerID);
 		Location loc = player.getLocation();
@@ -438,10 +329,7 @@ public class Utils {
 			if (otherPlayer.getLocation().distanceSquared(loc) <= squared) {
 				String otherPlayerID = PlayerConverter.getID(otherPlayer);
 				boolean meets = true;
-				for (String condition : conditions) {
-					if (!condition.contains(".")) {
-						condition = pack + "." + condition;
-					}
+				for (ConditionID condition : conditions) {
 					if (!BetonQuest.condition(otherPlayerID, condition)) {
 						meets = false;
 						break;
@@ -463,11 +351,45 @@ public class Utils {
 	 * @param string ID of event/condition/objective/item etc.
 	 * @return full ID with package prefix
 	 */
-	public static String addPackage(String packName, String string) {
+	public static String addPackage(ConfigPackage pack, String string) {
 		if (string.contains(".")) {
 			return string;
 		} else {
-			return packName + "." + string;
+			return pack.getName() + "." + string;
+		}
+	}
+	
+	/**
+	 * Parses the string as RGB or as DyeColor and returns it as Color.
+	 * 
+	 * @param string
+	 *            string to parse as a Color
+	 * @return the Color (never null)
+	 * @throws InstructionParseException
+	 *             when something goes wrong
+	 */
+	public static Color getColor(String string) throws InstructionParseException {
+		if (string == null || string.isEmpty()) {
+			throw new InstructionParseException("Color is not specified");
+		}
+		try {
+			return Color.fromRGB(Integer.parseInt(string));
+		} catch (NumberFormatException e1) {
+			// string is not a decimal number
+			try {
+				return Color.fromRGB(Integer.parseInt(string.replace("#", ""), 16));
+			} catch (NumberFormatException e2) {
+				// string is not a hexadecimal number, try dye color
+				try {
+					return DyeColor.valueOf(string.trim().toUpperCase().replace(' ', '_')).getColor();
+				} catch (IllegalArgumentException e3) {
+					// this was not a dye color name
+					throw new InstructionParseException("Dye color does not exist: " + string);
+				}
+			}
+		} catch (IllegalArgumentException e1) {
+			// string was a number, but incorrect
+			throw new InstructionParseException("Incorrect RGB code: " + string);
 		}
 	}
 }

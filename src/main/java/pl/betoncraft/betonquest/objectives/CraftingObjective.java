@@ -20,17 +20,19 @@ package pl.betoncraft.betonquest.objectives;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.event.inventory.InventoryType.SlotType;
 
 import pl.betoncraft.betonquest.BetonQuest;
+import pl.betoncraft.betonquest.Instruction;
 import pl.betoncraft.betonquest.InstructionParseException;
-import pl.betoncraft.betonquest.QuestItem;
 import pl.betoncraft.betonquest.api.Objective;
+import pl.betoncraft.betonquest.item.QuestItem;
 import pl.betoncraft.betonquest.utils.PlayerConverter;
 
 /**
@@ -43,31 +45,26 @@ public class CraftingObjective extends Objective implements Listener {
 	private final QuestItem item;
 	private final int amount;
 
-	public CraftingObjective(String packName, String label, String instruction) throws InstructionParseException {
-		super(packName, label, instruction);
+	public CraftingObjective(Instruction instruction) throws InstructionParseException {
+		super(instruction);
 		template = CraftData.class;
-		String[] parts = instructions.split(" ");
-		if (parts.length < 3) {
-			throw new InstructionParseException("Not enough arguments");
-		}
-		item = QuestItem.newQuestItem(packName, parts[1]);
-		try {
-			amount = Integer.parseInt(parts[2]);
-		} catch (NumberFormatException e) {
-			throw new InstructionParseException("Could not parse amount");
-		}
+		item = instruction.getQuestItem();
+		amount = instruction.getInt();
 		if (amount < 1) {
 			throw new InstructionParseException("Amount cannot be less than 1");
 		}
 	}
 
-	@EventHandler
+	@EventHandler(priority=EventPriority.MONITOR)
 	public void onCrafting(CraftItemEvent event) {
+		if (event.isCancelled()) {
+			return;
+		}
 		if (event.getWhoClicked() instanceof Player) {
 			Player player = (Player) event.getWhoClicked();
 			String playerID = PlayerConverter.getID(player);
 			CraftData playerData = (CraftData) dataMap.get(playerID);
-			if (containsPlayer(playerID) && item.equalsI(event.getRecipe().getResult()) && checkConditions(playerID)) {
+			if (containsPlayer(playerID) && item.compare(event.getRecipe().getResult()) && checkConditions(playerID)) {
 				playerData.subtract(event.getRecipe().getResult().getAmount());
 				if (playerData.isZero()) {
 					completeObjective(playerID);
@@ -76,16 +73,15 @@ public class CraftingObjective extends Objective implements Listener {
 		}
 	}
 
-	@EventHandler
+	@EventHandler(priority=EventPriority.LOW)
 	public void onShiftCrafting(InventoryClickEvent event) {
-		if ((event.getInventory().getType().equals(InventoryType.CRAFTING) && event.getRawSlot() == 9)
-				|| (event.getInventory().getType().equals(InventoryType.WORKBENCH) && event.getRawSlot() == 8)) {
-			if (event.getClick().equals(ClickType.SHIFT_LEFT) && event.getWhoClicked() instanceof Player) {
-				Player player = (Player) event.getWhoClicked();
-				String playerID = PlayerConverter.getID(player);
-				if (containsPlayer(playerID)) {
-					event.setCancelled(true);
-				}
+		if (event.getSlotType() == SlotType.RESULT
+				&& event.getClick().equals(ClickType.SHIFT_LEFT)
+				&& event.getWhoClicked() instanceof Player) {
+			Player player = (Player) event.getWhoClicked();
+			String playerID = PlayerConverter.getID(player);
+			if (containsPlayer(playerID)) {
+				event.setCancelled(true);
 			}
 		}
 	}

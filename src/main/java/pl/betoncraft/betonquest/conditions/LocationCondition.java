@@ -20,8 +20,10 @@ package pl.betoncraft.betonquest.conditions;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 
+import pl.betoncraft.betonquest.Instruction;
 import pl.betoncraft.betonquest.InstructionParseException;
 import pl.betoncraft.betonquest.QuestRuntimeException;
+import pl.betoncraft.betonquest.VariableNumber;
 import pl.betoncraft.betonquest.api.Condition;
 import pl.betoncraft.betonquest.utils.LocationData;
 import pl.betoncraft.betonquest.utils.PlayerConverter;
@@ -34,14 +36,12 @@ import pl.betoncraft.betonquest.utils.PlayerConverter;
 public class LocationCondition extends Condition {
 
 	private final LocationData loc;
+	private final VariableNumber range;
 
-	public LocationCondition(String packName, String instructions) throws InstructionParseException {
-		super(packName, instructions);
-		String[] parts = instructions.split(" ");
-		if (parts.length < 2) {
-			throw new InstructionParseException("Not enough arguments");
-		}
-		loc = new LocationData(packName, parts[1]);
+	public LocationCondition(Instruction instruction) throws InstructionParseException {
+		super(instruction);
+		loc = instruction.getLocation();
+		range = instruction.getVarNum();
 	}
 
 	@Override
@@ -51,8 +51,8 @@ public class LocationCondition extends Condition {
 		if (!location.getWorld().equals(player.getWorld())) {
 			return false;
 		}
-		double dist = loc.getData().getDouble(playerID);
-		if (player.getLocation().distanceSquared(location) <= dist * dist) {
+		double r = range.getDouble(playerID);
+		if (player.getLocation().distanceSquared(location) <= r * r) {
 			return true;
 		}
 		return false;

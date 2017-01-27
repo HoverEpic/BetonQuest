@@ -128,11 +128,8 @@ public class Journal {
 		if (Config.getString("config.journal.reversed_order").equalsIgnoreCase("true")) {
 			list = Lists.reverse(texts);
 		} else {
-			list = texts;
+			list = new ArrayList<>(texts);
 		}
-		list = new ArrayList<>(list);
-		if (mainPage != null)
-			list.add(0, mainPage);
 		return list;
 	}
 
@@ -162,7 +159,7 @@ public class Journal {
 			// get package and name of the pointer
 			String[] parts = pointer.getPointer().split("\\.");
 			String packName = parts[0];
-			ConfigPackage pack = Config.getPackage(packName);
+			ConfigPackage pack = Config.getPackages().get(packName);
 			if (pack == null) {
 				continue;
 			}
@@ -193,15 +190,10 @@ public class Journal {
 	 * @return the main page string or null, if there is no main page
 	 */
 	private String generateMainPage() {
-		HashMap<Integer, String> lines = new HashMap<>(); // holds text lines
-															// with their
-															// priority
-		ArrayList<Integer> numbers = new ArrayList<>(); // stores numbers that
-														// are used, so there's
-														// no need to search
-														// them
-		for (String packName : Config.getPackageNames()) {
-			ConfigPackage pack = Config.getPackage(packName);
+		HashMap<Integer, String> lines = new HashMap<>(); // holds text lines with their priority
+		ArrayList<Integer> numbers = new ArrayList<>(); // stores numbers that are used, so there's no need to search them
+		for (ConfigPackage pack : Config.getPackages().values()) {
+			String packName = pack.getName();
 			ConfigurationSection s = pack.getMain().getConfig().getConfigurationSection("journal_main_page");
 			if (s == null)
 				continue;
@@ -214,16 +206,19 @@ public class Journal {
 					String rawConditions = s.getString(key + ".conditions");
 					if (rawConditions != null && rawConditions.length() > 0) {
 						for (String condition : rawConditions.split(",")) {
-							if (!condition.contains(".")) {
-								condition = packName + "." + condition;
-							}
-							if (!BetonQuest.condition(playerID, condition)) {
+							try {
+								ConditionID conditionID = new ConditionID(pack, condition);
+								if (!BetonQuest.condition(playerID, conditionID)) {
+									continue keys;
+								}
+							} catch (ObjectNotFoundException e) {
+								Debug.error("Error while generatin main page in " + PlayerConverter.getPlayer(playerID)
+										+ "'s journal - condition '" + condition + "' not found: " + e.getMessage());
 								continue keys;
 							}
 						}
 					}
-					// here conditions are met, get the text in player's
-					// language
+					// here conditions are met, get the text in player's language
 					String text;
 					if (s.isConfigurationSection(key + ".text")) {
 						text = s.getString(key + ".text." + lang);
@@ -239,7 +234,12 @@ public class Journal {
 					}
 					// resolve variables
 					for (String variable : BetonQuest.resolveVariables(text)) {
-						BetonQuest.createVariable(pack, variable);
+						try {
+							BetonQuest.createVariable(pack, variable);
+						} catch (InstructionParseException e) {
+							Debug.error("Error while creating variable '" + variable + "' on main page in "
+									+ PlayerConverter.getName(playerID) + "'s journal: " + e.getMessage());
+						}
 						text = text.replace(variable,
 								BetonQuest.getInstance().getVariableValue(packName, variable, playerID));
 					}
@@ -264,7 +264,7 @@ public class Journal {
 		for (int i : sorted) {
 			sortedLines.add(lines.get(i));
 		}
-		String finalLine = StringUtils.join(sortedLines, '\n');
+		String finalLine = StringUtils.join(sortedLines, '\n').replace('&', '§');
 		return finalLine;
 	}
 
@@ -325,19 +325,33 @@ public class Journal {
 		List<String> lore = new ArrayList<String>();
 		lore.add(Config.getMessage(lang, "journal_lore").replaceAll("&", "§"));
 		meta.setLore(lore);
-
+		// add main page and generate pages from texts
+		List<String> finalList = new ArrayList<>();
 		if (Config.getString("config.journal.one_entry_per_page").equalsIgnoreCase("false")) {
-			// logic for converting entries into single text and then to pages
+			String color = Config.getString("config.journal_colors.line");
 			StringBuilder stringBuilder = new StringBuilder();
 			for (String entry : getText()) {
-				stringBuilder
-						.append(entry + "\n§" + Config.getString("config.journal_colors.line") + "---------------\n");
+				stringBuilder.append(entry + "\n§" + color + "---------------\n");
+			}
+			if (mainPage != null && mainPage.length() > 0) {
+				if (Config.getString("config.journal.full_main_page").equalsIgnoreCase("true")) {
+					finalList.addAll(Utils.pagesFromString(mainPage));
+				} else {
+					stringBuilder.insert(0, mainPage + "\n§" + color + "---------------\n");
+				}
 			}
 			String wholeString = stringBuilder.toString().trim();
-			// return ready journal ItemStack
-			meta.setPages(Utils.pagesFromString(wholeString, true));
+			finalList.addAll(Utils.pagesFromString(wholeString));
 		} else {
-			meta.setPages(getText());
+			if (mainPage != null && mainPage.length() > 0) {
+				finalList.addAll(Utils.pagesFromString(mainPage));
+			}
+			finalList.addAll(getText());
+		}
+		if (finalList.size() > 0) {
+			meta.setPages(finalList);
+		} else {
+			meta.addPage("");
 		}
 		item.setItemMeta(meta);
 		return item;

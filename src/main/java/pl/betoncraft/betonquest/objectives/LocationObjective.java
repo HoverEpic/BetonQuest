@@ -25,8 +25,10 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerMoveEvent;
 
 import pl.betoncraft.betonquest.BetonQuest;
+import pl.betoncraft.betonquest.Instruction;
 import pl.betoncraft.betonquest.InstructionParseException;
 import pl.betoncraft.betonquest.QuestRuntimeException;
+import pl.betoncraft.betonquest.VariableNumber;
 import pl.betoncraft.betonquest.api.Objective;
 import pl.betoncraft.betonquest.utils.Debug;
 import pl.betoncraft.betonquest.utils.LocationData;
@@ -40,15 +42,13 @@ import pl.betoncraft.betonquest.utils.PlayerConverter;
 public class LocationObjective extends Objective implements Listener {
 
 	private final LocationData loc;
+	private final VariableNumber range;
 
-	public LocationObjective(String packName, String label, String instruction) throws InstructionParseException {
-		super(packName, label, instruction);
+	public LocationObjective(Instruction instruction) throws InstructionParseException {
+		super(instruction);
 		template = ObjectiveData.class;
-		String[] parts = instructions.split(" ");
-		if (parts.length < 2) {
-			throw new InstructionParseException("Not enough arguments");
-		}
-		loc = new LocationData(packName, parts[1]);
+		loc = instruction.getLocation();
+		range = instruction.getVarNum();
 	}
 
 	@EventHandler
@@ -56,14 +56,14 @@ public class LocationObjective extends Objective implements Listener {
 		try {
 			String playerID = PlayerConverter.getID(event.getPlayer());
 			Location location = loc.getLocation(playerID);
-			double distance = loc.getData().getDouble(playerID);
 			if (containsPlayer(playerID) && event.getPlayer().getWorld().equals(location.getWorld())) {
-				if (event.getTo().distanceSquared(location) <= distance * distance && super.checkConditions(playerID)) {
+				double r = range.getDouble(playerID);
+				if (event.getTo().distanceSquared(location) <= r * r && super.checkConditions(playerID)) {
 					completeObjective(playerID);
 				}
 			}
 		} catch (QuestRuntimeException e) {
-			Debug.error("Error while handling '" + pack.getName() + "." + getLabel() + "' objective: " + e.getMessage());
+			Debug.error("Error while handling '" + instruction.getID() + "' objective: " + e.getMessage());
 		}
 	}
 
@@ -89,7 +89,7 @@ public class LocationObjective extends Objective implements Listener {
 			try {
 				location = loc.getLocation(playerID);
 			} catch (QuestRuntimeException e) {
-				Debug.error("Error while getting location property in '" + pack.getName() + "." + getLabel() + "' objective: "
+				Debug.error("Error while getting location property in '" + instruction.getID() + "' objective: "
 						+ e.getMessage());
 				return "";
 			}

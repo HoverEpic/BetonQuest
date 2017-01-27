@@ -25,10 +25,13 @@ import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.inventory.EquipmentSlot;
 
 import pl.betoncraft.betonquest.BetonQuest;
+import pl.betoncraft.betonquest.Instruction;
 import pl.betoncraft.betonquest.InstructionParseException;
 import pl.betoncraft.betonquest.QuestRuntimeException;
+import pl.betoncraft.betonquest.VariableNumber;
 import pl.betoncraft.betonquest.api.Objective;
 import pl.betoncraft.betonquest.utils.Debug;
 import pl.betoncraft.betonquest.utils.LocationData;
@@ -42,68 +45,48 @@ import pl.betoncraft.betonquest.utils.PlayerConverter;
  */
 public class ActionObjective extends Objective implements Listener {
 
-	private String action;
+	private Click action;
 	private Material type;
 	private byte data;
 	private LocationData loc;
+	private VariableNumber range;
 	private boolean cancel = false;
+	
+	public enum Click {
+		RIGHT, LEFT, ANY
+	}
 
-	public ActionObjective(String packName, String label, String instruction) throws InstructionParseException {
-		super(packName, label, instruction);
+	public ActionObjective(Instruction instruction) throws InstructionParseException {
+		super(instruction);
 		template = ObjectiveData.class;
-		String[] parts = instructions.split(" ");
-		if (parts.length < 3) {
-			throw new InstructionParseException("Not enough arguments");
-		}
-		if (parts[1].equalsIgnoreCase("right") || parts[1].equalsIgnoreCase("left")) {
-			action = parts[1].toLowerCase();
-		} else {
-			action = "any";
-		}
-		if (parts[2].equalsIgnoreCase("any")) {
+		action = instruction.getEnum(Click.class);
+		if (instruction.next().equalsIgnoreCase("any")) {
 			type = Material.AIR;
 			data = -1;
 		} else {
-			if (parts[2].contains(":")) {
-				String[] materialParts = parts[2].split(":");
-				type = Material.matchMaterial(materialParts[0]);
-				if (materialParts.length > 1) {
-					try {
-						data = Byte.valueOf(materialParts[1]);
-					} catch (NumberFormatException e) {
-						throw new InstructionParseException("Could not parse data value");
-					}
-				} else {
-					data = -1;
-				}
-			} else {
-				type = Material.matchMaterial(parts[2]);
-				data = -1;
-			}
+			String[] parts = instruction.current().split(":");
+			type = instruction.getMaterial(parts[0]);
+			data = parts.length > 1 ? instruction.getByte(parts[1], (byte) -1) : -1;
 		}
-		if (type == null) {
-			throw new InstructionParseException("Unknown material type");
-		}
-		for (String part : parts) {
-			if (part.contains("loc:")) {
-				loc = new LocationData(packName, part.substring(4));
-			}
-			if (part.equalsIgnoreCase("cancel")) {
-				cancel = true;
-			}
-		}
+		loc = instruction.getLocation(instruction.getOptional("loc"));
+		range = instruction.getVarNum(instruction.getOptional("range"));
+		cancel = instruction.hasArgument("cancel");
 	}
 
 	@SuppressWarnings("deprecation")
 	@EventHandler
 	public void onInteract(PlayerInteractEvent event) {
+		// Only fire the event for the main hand to avoid that the event is triggered two times.
+		if (event.getHand() == EquipmentSlot.OFF_HAND && event.getHand() != null) {
+			return; // off hand packet, ignore.
+		}
 		String playerID = PlayerConverter.getID(event.getPlayer());
 		if (!containsPlayer(playerID)) {
 			return;
 		}
 		if (type == Material.AIR) {
 			switch (action) {
-			case "right":
+			case RIGHT:
 				if ((event.getAction().equals(Action.RIGHT_CLICK_AIR)
 						|| event.getAction().equals(Action.RIGHT_CLICK_BLOCK)) && checkConditions(playerID)) {
 					if (cancel)
@@ -111,7 +94,7 @@ public class ActionObjective extends Objective implements Listener {
 					completeObjective(playerID);
 				}
 				break;
-			case "left":
+			case LEFT:
 				if ((event.getAction().equals(Action.LEFT_CLICK_AIR)
 						|| event.getAction().equals(Action.LEFT_CLICK_BLOCK)) && checkConditions(playerID)) {
 					if (cancel)
@@ -119,6 +102,7 @@ public class ActionObjective extends Objective implements Listener {
 					completeObjective(playerID);
 				}
 				break;
+			case ANY:
 			default:
 				if ((event.getAction().equals(Action.LEFT_CLICK_AIR)
 						|| event.getAction().equals(Action.LEFT_CLICK_BLOCK)
@@ -133,34 +117,41 @@ public class ActionObjective extends Objective implements Listener {
 		} else {
 			Action actionEnum;
 			switch (action) {
-			case "right":
+			case RIGHT:
 				actionEnum = Action.RIGHT_CLICK_BLOCK;
 				break;
-			case "left":
+			case LEFT:
 				actionEnum = Action.LEFT_CLICK_BLOCK;
 				break;
+			case ANY:
 			default:
 				actionEnum = null;
 				break;
 			}
 			try {
-				Location location = loc.getLocation(playerID);
-				double range = loc.getData().getDouble(playerID);
 				if (((actionEnum == null && (event.getAction().equals(Action.RIGHT_CLICK_BLOCK)
 						|| event.getAction().equals(Action.LEFT_CLICK_BLOCK))) || event.getAction().equals(actionEnum))
 						&& (event.getClickedBlock() != null && ((type == Material.FIRE
-						&& event.getClickedBlock().getRelative(event.getBlockFace()).getType() == type) 
-						|| event.getClickedBlock().getType().equals(type)))
-						&& (data < 0 || event.getClickedBlock().getData() == data)
-						&& (loc == null || (event.getClickedBlock().getWorld().equals(location.getWorld())
-						&& event.getClickedBlock().getLocation().distance(location) <= range))
-						&& checkConditions(playerID)) {
-					if (cancel)
-						event.setCancelled(true);
-					completeObjective(playerID);
+								&& event.getClickedBlock().getRelative(event.getBlockFace()).getType() == type)
+								|| event.getClickedBlock().getType().equals(type)))
+						&& (data < 0 || event.getClickedBlock().getData() == data)) {
+					if (loc != null) {
+						Location location = loc.getLocation(playerID);
+						double r = range.getDouble(playerID);
+						if (!event.getClickedBlock().getWorld().equals(location.getWorld())
+								|| event.getClickedBlock().getLocation().distance(location) > r) {
+							return;
+						}
+					}
+					if (checkConditions(playerID)) {
+						if (cancel) {
+							event.setCancelled(true);
+						}
+						completeObjective(playerID);
+					}
 				}
 			} catch (QuestRuntimeException e) {
-				Debug.error("Error while handling '" + pack.getName() + "." + getLabel() + "' objective: " + e.getMessage());
+				Debug.error("Error while handling '" + instruction.getID() + "' objective: " + e.getMessage());
 			}
 		}
 	}
@@ -190,7 +181,7 @@ public class ActionObjective extends Objective implements Listener {
 			try {
 				location = loc.getLocation(playerID);
 			} catch (QuestRuntimeException e) {
-				Debug.error("Error while getting location property in '" + pack.getName() + "." + getLabel() + "' objective: "
+				Debug.error("Error while getting location property in '" + instruction.getID() + "' objective: "
 						+ e.getMessage());
 				return "";
 			}

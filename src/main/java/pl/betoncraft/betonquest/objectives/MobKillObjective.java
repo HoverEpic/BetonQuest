@@ -17,18 +17,23 @@
  */
 package pl.betoncraft.betonquest.objectives;
 
+import java.util.List;
+
 import org.bukkit.Bukkit;
 import org.bukkit.entity.EntityType;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
+import org.bukkit.metadata.MetadataValue;
 
 import pl.betoncraft.betonquest.BetonQuest;
+import pl.betoncraft.betonquest.Instruction;
 import pl.betoncraft.betonquest.InstructionParseException;
 import pl.betoncraft.betonquest.api.MobKillNotifier.MobKilledEvent;
 import pl.betoncraft.betonquest.api.Objective;
 import pl.betoncraft.betonquest.config.Config;
 import pl.betoncraft.betonquest.utils.PlayerConverter;
+import pl.betoncraft.betonquest.utils.Utils;
 
 /**
  * Player has to kill specified amount of specified mobs. It can also require
@@ -39,42 +44,26 @@ import pl.betoncraft.betonquest.utils.PlayerConverter;
  */
 public class MobKillObjective extends Objective implements Listener {
 
-	protected final EntityType mobType;
-	protected final int amount;
-	protected final String name;
-	protected final boolean notify;
+	protected EntityType mobType;
+	protected int amount;
+	protected String name;
+	protected String marked;
+	protected boolean notify;
 
-	public MobKillObjective(String packName, String label, String instruction) throws InstructionParseException {
-		super(packName, label, instruction);
+	public MobKillObjective(Instruction instruction) throws InstructionParseException {
+		super(instruction);
 		template = MobData.class;
-		String[] parts = instructions.split(" ");
-		if (parts.length < 3) {
-			throw new InstructionParseException("Not enough arguments");
+		mobType = instruction.getEnum(EntityType.class);
+		amount = instruction.getPositive();
+		name = instruction.getOptional("name");
+		if (name != null) {
+			name = name.replace('_', ' ');
 		}
-		try {
-			mobType = EntityType.valueOf(parts[1].toUpperCase());
-		} catch (IllegalArgumentException e) {
-			throw new InstructionParseException("Unknown entity type: " + parts[1]);
+		marked = instruction.getOptional("marked");
+		if (marked != null) {
+			marked = Utils.addPackage(instruction.getPackage(), marked);
 		}
-		try {
-			amount = Integer.valueOf(parts[2]);
-		} catch (NumberFormatException e) {
-			throw new InstructionParseException("Could not parse amount");
-		}
-		if (amount < 1) {
-			throw new InstructionParseException("Amount cannot be less than 1");
-		}
-		String tempName = null;
-		boolean tempNotify = false;
-		for (String part : parts) {
-			if (part.startsWith("name:")) {
-				tempName = part.substring(5).replace("_", " ");
-			} else if (part.equalsIgnoreCase("notify")) {
-				tempNotify = true;
-			}
-		}
-		name = tempName;
-		notify = tempNotify;
+		notify = instruction.hasArgument("notify");
 	}
 
 	@EventHandler
@@ -84,9 +73,21 @@ public class MobKillObjective extends Objective implements Listener {
 			return;
 		}
 		// if the entity should have a name and it does not match, return
-		if (name != null
-				&& (event.getEntity().getCustomName() == null || !event.getEntity().getCustomName().equals(name))) {
+		if (name != null && (event.getEntity().getCustomName() == null ||
+				!event.getEntity().getCustomName().equals(name))) {
 			return;
+		}
+		// check if the entity is correctly marked
+		if (marked != null) {
+			if (!event.getEntity().hasMetadata("betonquest-marked")) {
+				return;
+			}
+			List<MetadataValue> meta = event.getEntity().getMetadata("betonquest-marked");
+			for (MetadataValue m : meta) {
+				if (!m.asString().equals(marked)) {
+					return;
+				}
+			}
 		}
 		// check if the player has this objective
 		String playerID = PlayerConverter.getID(event.getPlayer());
@@ -98,7 +99,7 @@ public class MobKillObjective extends Objective implements Listener {
 				completeObjective(playerID);
 			} else if (notify) {
 				// send a notification
-				Config.sendMessage(playerID, "mobs_to_kill", new String[] { String.valueOf(playerData.getAmount()) });
+				Config.sendMessage(playerID, "mobs_to_kill", new String[] {String.valueOf(playerData.getAmount())});
 			}
 		}
 	}

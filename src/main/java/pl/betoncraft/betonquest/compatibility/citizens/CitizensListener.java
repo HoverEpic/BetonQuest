@@ -39,7 +39,7 @@ public class CitizensListener implements Listener
 {
 
     private BetonQuest plugin;
-
+    
     /**
      * Initializes the listener
      */
@@ -56,21 +56,26 @@ public class CitizensListener implements Listener
         {
             return;
         }
+        if (event.isCancelled()) {
+                return;
+        }
+        if (!event.getClicker().hasPermission("betonquest.conversation")) {
+                return;
+        }
+        if (NPCMoveEvent.isNPCMoving(event.getNPC())) {
+                return;
+        }
         final String playerID = PlayerConverter.getID(event.getClicker());
-        if (CombatTagger.isTagged(playerID))
-        {
-            Config.sendMessage(playerID, "busy");
-            return;
+        if (CombatTagger.isTagged(playerID)) {
+                Config.sendMessage(playerID, "busy");
+                return;
         }
         String id = String.valueOf(event.getNPC().getId());
         String assignment = Config.getNpc(id);
-        if (assignment != null)
-        {
-            String[] parts = assignment.split("\\.");
-            final String convName = parts[1];
-            final String packName = parts[0];
-            event.setCancelled(true);
-            new CitizensConversation(playerID, packName, convName, event.getNPC().getEntity().getLocation(), event.getNPC());
+        if (assignment != null) {
+                event.setCancelled(true);
+                new CitizensConversation(playerID, assignment, event.getNPC().getEntity().getLocation(),
+                                event.getNPC());
         }
     }
 
@@ -81,25 +86,26 @@ public class CitizensListener implements Listener
         {
             return;
         }
-        if (event.isCancelled())
-        {
-            return;
+        if (event.isCancelled()) {
+                return;
+        }
+        if (!event.getClicker().hasPermission("betonquest.conversation")) {
+                return;
+        }
+        if (NPCMoveEvent.isNPCMoving(event.getNPC())) {
+                return;
         }
         final String playerID = PlayerConverter.getID(event.getClicker());
-        if (CombatTagger.isTagged(playerID))
-        {
-            Config.sendMessage(playerID, "busy");
-            return;
+        if (CombatTagger.isTagged(playerID)) {
+                Config.sendMessage(playerID, "busy");
+                return;
         }
-        final String id = String.valueOf(event.getNPC().getId());
-        final String assignment = Config.getNpc(id);
-        if (assignment != null)
-        {
-            final String[] parts = assignment.split("\\.");
-            final String convName = parts[1];
-            final String packName = parts[0];
-            event.setCancelled(true);
-            new CitizensConversation(playerID, packName, convName, event.getNPC().getEntity().getLocation(), event.getNPC());
+        String id = String.valueOf(event.getNPC().getId());
+        String assignment = Config.getNpc(id);
+        if (assignment != null) {
+                event.setCancelled(true);
+                new CitizensConversation(playerID, assignment, event.getNPC().getEntity().getLocation(),
+                                event.getNPC());
         }
     }
 }

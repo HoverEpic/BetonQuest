@@ -1,4 +1,4 @@
-version: v46
+version: v51
 mysql:
   host: ''
   port: ''
@@ -19,10 +19,11 @@ combat_delay: '10'
 notify_pullback: 'true'
 default_package: default
 remove_items_after_respawn: 'true'
+quest_items_unbreakable: 'true'
 sounds:
-  start: VILLAGER_HAGGLE
-  end: VILLAGER_YES
-  journal: BAT_TAKEOFF
+  start: ENTITY_VILLAGER_AMBIENT
+  end: ENTITY_VILLAGER_YES
+  journal: ENTITY_BAT_TAKEOFF
   update: 'false'
   full: 'false'
 cmd_blacklist:
@@ -52,6 +53,7 @@ journal:
   one_entry_per_page: 'false'
   reversed_order: 'true'
   hide_date: 'false'
+  full_main_page: 'false'
 journal_colors:
   date:
     day: '9'

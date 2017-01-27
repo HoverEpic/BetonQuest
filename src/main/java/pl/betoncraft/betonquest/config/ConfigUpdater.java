@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -51,12 +52,13 @@ import org.bukkit.inventory.ItemStack;
 
 import pl.betoncraft.betonquest.BetonQuest;
 import pl.betoncraft.betonquest.InstructionParseException;
-import pl.betoncraft.betonquest.QuestItem;
+import pl.betoncraft.betonquest.config.ConfigAccessor.AccessorType;
 import pl.betoncraft.betonquest.database.Connector;
 import pl.betoncraft.betonquest.database.Connector.QueryType;
 import pl.betoncraft.betonquest.database.Connector.UpdateType;
 import pl.betoncraft.betonquest.database.Database;
 import pl.betoncraft.betonquest.database.Saver.Record;
+import pl.betoncraft.betonquest.item.QuestItem;
 import pl.betoncraft.betonquest.utils.Debug;
 import pl.betoncraft.betonquest.utils.Utils;
 
@@ -66,6 +68,8 @@ import pl.betoncraft.betonquest.utils.Utils;
  * @author Jakub Sapalski
  */
 public class ConfigUpdater {
+
+	// abandon all hope, ye who enter here
 
 	/**
 	 * Error which should be displayed to the player when something goes wrong
@@ -88,7 +92,7 @@ public class ConfigUpdater {
 	 * Destination version. At the end of the updating process this will be the
 	 * current version
 	 */
-	private final String destination = "v46";
+	private final String destination = "v51";
 	/**
 	 * Deprecated ConfigHandler, used for updating older configuration files
 	 */
@@ -198,6 +202,180 @@ public class ConfigUpdater {
 	}
 
 	@SuppressWarnings("unused")
+	private void update_from_v50() {
+		Debug.info("Moving custom settings from main.yml to custom.yml");
+		List<String> coreSettings = Arrays.asList(new String[]{"npcs", "variables", "static", "global_locations",
+				"cancel", "journal_main_page", "compass", "enabled"});
+		for (ConfigPackage pack : Config.getPackages().values()) {
+			Debug.info("  Moving custom settings in package " + pack.getName());
+			ConfigAccessor main = pack.getMain();
+			ConfigAccessor custom = pack.getCustom();
+			main:
+			for (String key : main.getConfig().getKeys(false)) {
+				for (String coreSetting : coreSettings) {
+					if (key.equals(coreSetting)) {
+						Debug.info("    Key " + key + " is core setting, skipping");
+						continue main;
+					}
+				}
+				Debug.info("    Key " + key + " is custom, moving it");
+				custom.getConfig().set(key, main.getConfig().get(key));
+				main.getConfig().set(key, null);
+			}
+			main.saveConfig();
+			custom.saveConfig();
+		}
+		Debug.broadcast("Moved custom settings from main.yml to custom.yml file");
+		config.set("version", "v51");
+		instance.saveConfig();
+	}
+
+	@SuppressWarnings("unused")
+	private void update_from_v49() {
+		Set<String> enabledPackages = new HashSet<>(config.getStringList("packages"));
+		Debug.info("Disabling packages not listed in the config");
+		for (Iterator<ConfigPackage> iterator = Config.getPackages().values().iterator(); iterator.hasNext();) {
+			ConfigPackage pack = iterator.next();
+			Debug.info("  Looking at package " + pack.getName());
+			if (!enabledPackages.contains(pack.getName())) {
+				Debug.info("    Package is not enabled, removing it from the list.");
+				pack.getMain().getConfig().set("enabled", false);
+				pack.getMain().saveConfig();
+				iterator.remove();
+			} else {
+				pack.getMain().getConfig().set("enabled", true);
+				pack.getMain().saveConfig();
+			}
+		}
+		Debug.info("All packages enabled/disabled, removing 'packages' section from config");
+		config.set("packages", null);
+		Debug.broadcast("Moved package enabling from config to main files");
+		config.set("version", "v50");
+		instance.saveConfig();
+	}
+
+	@SuppressWarnings("unused")
+	private void update_from_v48() {
+		for (ConfigPackage pack : Config.getPackages().values()) {
+			String packName = pack.getName();
+			List<ConfigAccessor> sections = new ArrayList<>();
+			// the idea is to get index of location argument for every type
+			// and use a method to replace last semicolon with a space, because
+			// all range arguments are right next to location arguments
+			sections.add(pack.getConditions());
+			sections.add(pack.getEvents());
+			sections.add(pack.getObjectives());
+			for (ConfigAccessor acc : sections) {
+				AccessorType type = acc.getType();
+				ConfigurationSection sec = acc.getConfig();
+				for (String key : sec.getKeys(false)) {
+					String value = sec.getString(key);
+					int i = value.indexOf(' ');
+					if (i < 0) {
+						continue;
+					}
+					String object = value.substring(0, i).toLowerCase();
+					int index = -1;
+					switch (type) {
+					case CONDITIONS:
+						switch (object) {
+						case "location":
+							index = 1;
+							break;
+						case "monsters":
+							index = 2;
+							break;
+						}
+						break;
+					case EVENTS:
+						switch (object) {
+						case "clear":
+							index = 2;
+							break;
+						}
+						break;
+					case OBJECTIVES:
+						switch (object) {
+						case "action":
+							// action objective uses optional argument, so convert it manually
+							String[] parts = value.split(" ");
+							String loc = null;
+							for (String part : parts) {
+								if (part.startsWith("loc:")) {
+									loc = part;
+									break;
+								}
+							}
+							if (loc != null) {
+								int j = loc.lastIndexOf(';');
+								if (j < 0 || j >= loc.length() - 1) {
+									continue;
+								}
+								String front = loc.substring(0, j);
+								String back = loc.substring(j + 1);
+								String newLoc = front + " range:" + back;
+								sec.set(key, value.replace(loc, newLoc));
+							}
+							break;
+						case "arrow":
+							index = 1;
+							break;
+						case "location":
+							index = 1;
+							break;
+						}
+						break;
+					default:
+						break;
+					}
+					if (index >= 0) {
+						sec.set(key, semicolonToSpace(value, index));
+					}
+				}
+				acc.saveConfig();
+			}
+		}
+		Debug.broadcast("Converted additional location arguments to the new format");
+		config.set("version", "v49");
+		instance.saveConfig();
+	}
+	
+	private String semicolonToSpace(String string, int argument) {
+		if (string == null) {
+			return null;
+		}
+		String[] parts = string.split(" ");
+		if (parts.length <= argument) {
+			return null;
+		}
+		String original = parts[argument];
+		int lastSemicolon = original.lastIndexOf(';');
+		if (lastSemicolon < 0) {
+			return null;
+		}
+		char[] chars = original.toCharArray();
+		chars[lastSemicolon] = ' ';
+		String replaced = new String(chars);
+		return string.replace(original, replaced);
+	}
+
+	@SuppressWarnings("unused")
+	private void update_from_v47() {
+		config.set("quest_items_unbreakable", "true");
+		Debug.broadcast("Added option to disable quest item unbreakability");
+		config.set("version", "v48");
+		instance.saveConfig();
+	}
+
+	@SuppressWarnings("unused")
+	private void update_from_v46() {
+		config.set("journal.full_main_page", "false");
+		Debug.broadcast("Added 'full_main_page' option to config");
+		config.set("version", "v47");
+		instance.saveConfig();
+	}
+
+	@SuppressWarnings("unused")
 	private void update_from_v45() {
 		config.set("hook.legendquest", "true");
 		Debug.broadcast("Added compatibility with LegendQuest");
@@ -211,9 +389,9 @@ public class ConfigUpdater {
 	private void update_from_v44() {
 		try {
 			Debug.info("Translating items in 'potion' objectives");
-			for (String packName : Config.getPackageNames()) {
+			for (ConfigPackage pack : Config.getPackages().values()) {
+				String packName = pack.getName();
 				Debug.info("  Handling " + packName + " package");
-				ConfigPackage pack = Config.getPackage(packName);
 				FileConfiguration objectives = pack.getObjectives().getConfig();
 				FileConfiguration items = pack.getItems().getConfig();
 				for (String key : objectives.getKeys(false)) {
@@ -234,7 +412,7 @@ public class ConfigUpdater {
 						Debug.info("    It's incorrect");
 						continue;
 					}
-					ItemStack itemStack = new QuestItem("potion data:" + data).generateItem(1);
+					ItemStack itemStack = new QuestItem("potion data:" + data).generate(1);
 					{
 						// it doesn't work without actually spawning the item in-game...
 						World world = Bukkit.getWorlds().get(0);
@@ -243,7 +421,7 @@ public class ConfigUpdater {
 						itemStack = item.getItemStack();
 						item.remove();
 					}
-					String updatedInstruction = Utils.itemToString(itemStack);
+					String updatedInstruction = QuestItem.itemToString(itemStack);
 					Debug.info("    Potion instruction: '" + updatedInstruction + "'");
 					String item = null;
 					for (String itemKey : items.getKeys(false)) {
@@ -284,10 +462,10 @@ public class ConfigUpdater {
 	private void update_from_v43() {
 		try {
 			Debug.info("Translating potion instructions");
-			
-			for (String packName : Config.getPackageNames()) {
+
+			for (ConfigPackage pack : Config.getPackages().values()) {
+				String packName = pack.getName();
 				Debug.info("  Handling " + packName + " package");
-				ConfigPackage pack = Config.getPackage(packName);
 				FileConfiguration items = pack.getItems().getConfig();
 				for (String key : items.getKeys(false)) {
 					String instruction = items.getString(key);
@@ -297,7 +475,7 @@ public class ConfigUpdater {
 					Debug.info("    Found " + key + " potion with instruction '" + instruction + "'");
 					try {
 						QuestItem questItem = new QuestItem(instruction);
-						ItemStack itemStack = questItem.generateItem(1);
+						ItemStack itemStack = questItem.generate(1);
 						{
 							// it doesn't work without actually spawning the item in-game...
 							World world = Bukkit.getWorlds().get(0);
@@ -307,7 +485,7 @@ public class ConfigUpdater {
 							item.remove();
 							// lol
 						}
-						String updatedInstruction = Utils.itemToString(itemStack);
+						String updatedInstruction = QuestItem.itemToString(itemStack);
 						Debug.info("    New instruction: '" + updatedInstruction + "'");
 						items.set(key, updatedInstruction);
 					} catch (InstructionParseException e) {
@@ -339,8 +517,8 @@ public class ConfigUpdater {
 	private void update_from_v41() {
 		try {
 			// change raw material names in craft objectives to items from items.yml
-			for (String packName : Config.getPackageNames()) {
-				ConfigPackage pack = Config.getPackage(packName);
+			for (ConfigPackage pack : Config.getPackages().values()) {
+				String packName = pack.getName();
 				ConfigAccessor objectives = pack.getObjectives();
 				ConfigAccessor items = pack.getItems();
 				ArrayList<String> materials = new ArrayList<>();
@@ -451,8 +629,9 @@ public class ConfigUpdater {
 		try {
 			Debug.info("Updating global location tags in the database");
 			Debug.info("    oiienwfiu wenfiu nweiufn weiunf iuwenf iuw");
-			for (String packName : Config.getPackageNames()) {
-				String locList = Config.getPackage(packName).getMain().getConfig().getString("global_locations");
+			for (ConfigPackage pack : Config.getPackages().values()) {
+				String packName = pack.getName();
+				String locList = pack.getMain().getConfig().getString("global_locations");
 				Debug.info("  Handling package '" + packName + "': " + locList);
 				if (locList == null) {
 					continue;
@@ -534,9 +713,9 @@ public class ConfigUpdater {
 	private void update_from_v30() {
 		try {
 			Debug.info("Converting cancelers to a new format");
-			for (String packName : Config.getPackageNames()) {
+			for (ConfigPackage pack : Config.getPackages().values()) {
+				String packName = pack.getName();
 				Debug.info("Searching " + packName + " package");
-				ConfigPackage pack = Config.getPackage(packName);
 				ConfigurationSection s = pack.getMain().getConfig().getConfigurationSection("cancel");
 				if (s == null)
 					continue;
@@ -609,8 +788,8 @@ public class ConfigUpdater {
 	@SuppressWarnings("unused")
 	private void update_from_v29() {
 		try {
-			for (String packName : Config.getPackageNames()) {
-				ConfigPackage pack = Config.getPackage(packName);
+			for (ConfigPackage pack : Config.getPackages().values()) {
+				String packName = pack.getName();
 				ConfigurationSection section = pack.getMain().getConfig().getConfigurationSection("variables");
 				for (String key : section.getKeys(true)) {
 					String variable = section.getString(key);
@@ -639,7 +818,7 @@ public class ConfigUpdater {
 			// this will ensure that there is no "global" package already
 			// defined
 			int i = 1;
-			while (Config.getPackage(globalName) != null) {
+			while (Config.getPackages().get(globalName) != null) {
 				i++;
 				globalName = "global-" + i;
 			}
@@ -653,9 +832,9 @@ public class ConfigUpdater {
 			tags.put(globalName, globalTagList);
 			points.put(globalName, globalPointList);
 			ArrayList<ConfigPackage> packages = new ArrayList<>();
-			for (String packName : Config.getPackageNames()) {
+			for (ConfigPackage pack : Config.getPackages().values()) {
+				String packName = pack.getName();
 				Debug.info("  Checking '" + packName + "' package");
-				ConfigPackage pack = Config.getPackage(packName);
 				// skip packages that already use prefixes
 				String prefixOption = pack.getString("main.tag_point_prefix");
 				if (prefixOption != null && prefixOption.equalsIgnoreCase("true"))
@@ -1026,8 +1205,9 @@ public class ConfigUpdater {
 				}
 			}
 			// remove "tag_point_prefix" option from main.yml files
-			for (String packName : Config.getPackageNames()) {
-				ConfigAccessor main = Config.getPackage(packName).getMain();
+			for (ConfigPackage pack : Config.getPackages().values()) {
+				String packName = pack.getName();
+				ConfigAccessor main = pack.getMain();
 				main.getConfig().set("tag_point_prefix", null);
 				main.saveConfig();
 			}
@@ -1061,9 +1241,10 @@ public class ConfigUpdater {
 	@SuppressWarnings("unused")
 	private void update_from_v26() {
 		try {
-			for (String packName : Config.getPackageNames()) {
-				for (String convName : Config.getPackage(packName).getConversationNames()) {
-					FileConfiguration conv = Config.getPackage(packName).getConversation(convName).getConfig();
+			for (ConfigPackage pack : Config.getPackages().values()) {
+				String packName = pack.getName();
+				for (String convName : pack.getConversationNames()) {
+					FileConfiguration conv = pack.getConversation(convName).getConfig();
 					ConfigurationSection playerSection = conv.getConfigurationSection("player_options");
 					if (playerSection != null) {
 						for (String playerKey : playerSection.getKeys(false)) {
@@ -1098,7 +1279,7 @@ public class ConfigUpdater {
 							}
 						}
 					}
-					Config.getPackage(packName).getConversation(convName).saveConfig();
+					pack.getConversation(convName).saveConfig();
 				}
 			}
 		} catch (Exception e) {
@@ -1113,8 +1294,8 @@ public class ConfigUpdater {
 	@SuppressWarnings("unused")
 	private void update_from_v25() {
 		try {
-			for (String packName : Config.getPackageNames()) {
-				ConfigPackage pack = Config.getPackage(packName);
+			for (ConfigPackage pack : Config.getPackages().values()) {
+				String packName = pack.getName();
 				FileConfiguration events = pack.getEvents().getConfig();
 				for (String key : events.getKeys(false)) {
 					String event = events.getString(key);
@@ -1366,9 +1547,9 @@ public class ConfigUpdater {
 			messages.set("global", null);
 			Debug.broadcast("Moved 'global' messages to main config.");
 			Config.getMessages().saveConfig();
-			for (String packName : Config.getPackageNames()) {
+			for (ConfigPackage pack : Config.getPackages().values()) {
+				String packName = pack.getName();
 				Debug.info("Processing " + packName + " package");
-				ConfigPackage pack = Config.getPackage(packName);
 				ConfigurationSection cancelers = pack.getMain().getConfig().getConfigurationSection("cancel");
 				for (String key : cancelers.getKeys(false)) {
 					String canceler = cancelers.getString(key);
@@ -1450,8 +1631,9 @@ public class ConfigUpdater {
 	@SuppressWarnings("unused")
 	private void update_from_v17() {
 		try {
-			for (String packName : Config.getPackageNames()) {
-				ConfigAccessor main = Config.getPackage(packName).getMain();
+			for (ConfigPackage pack : Config.getPackages().values()) {
+				String packName = pack.getName();
+				ConfigAccessor main = pack.getMain();
 				main.getConfig().set("tag_point_prefix", "false");
 				main.saveConfig();
 			}
@@ -1469,9 +1651,9 @@ public class ConfigUpdater {
 		try {
 			// move objectives from events.yml to objectives.yml
 			Debug.info("Moving objectives to objectives.yml");
-			for (String packName : Config.getPackageNames()) {
+			for (ConfigPackage pack : Config.getPackages().values()) {
+				String packName = pack.getName();
 				Debug.info("  Package " + packName);
-				ConfigPackage pack = Config.getPackage(packName);
 				ConfigAccessor events = pack.getEvents();
 				ConfigAccessor objectives = pack.getObjectives();
 				ConfigAccessor main = pack.getMain();
@@ -1589,8 +1771,8 @@ public class ConfigUpdater {
 					continue;
 				}
 				// attack correct package in front of the label
-				for (String packName : Config.getPackageNames()) {
-					ConfigPackage pack = Config.getPackage(packName);
+				for (ConfigPackage pack : Config.getPackages().values()) {
+					String packName = pack.getName();
 					if (pack.getObjectives().getConfig().contains(label)) {
 						label = packName + "." + label;
 						break;
@@ -1681,9 +1863,9 @@ public class ConfigUpdater {
 	private void update_from_v13() {
 		try {
 			Debug.info("Removing empty lines in conversation files");
-			for (String packName : Config.getPackageNames()) {
+			for (ConfigPackage pack : Config.getPackages().values()) {
+				String packName = pack.getName();
 				Debug.info("  Package " + packName);
-				ConfigPackage pack = Config.getPackage(packName);
 				for (String convName : pack.getConversationNames()) {
 					Debug.info("    Conversation " + convName);
 					ConfigAccessor conv = pack.getConversation(convName);
@@ -1710,7 +1892,7 @@ public class ConfigUpdater {
 		try {
 			Debug.info("Moving all configuration to \"default\" package");
 			// clear the default package, which contains only default quest
-			File defPkg = Config.getPackage("default").getFolder();
+			File defPkg = Config.getPackages().get("default").getFolder();
 			Debug.info("  Deleting default files");
 			for (File file : defPkg.listFiles()) {
 				file.delete();
@@ -2891,7 +3073,7 @@ public class ConfigUpdater {
 				}
 				if (text != null) {
 					StringBuilder pages = new StringBuilder();
-					for (String page : Utils.pagesFromString(text.replace("_", " "), true)) {
+					for (String page : Utils.pagesFromString(text.replace("_", " "))) {
 						pages.append(page.replaceAll(" ", "_") + "|");
 					}
 					parts.add("text:" + pages.substring(0, pages.length() - 2));
@@ -3014,10 +3196,11 @@ public class ConfigUpdater {
 				}
 				// create an item
 				String newItemID = null;
+				@SuppressWarnings("deprecation")
 				QuestItem item = new QuestItem(material, data, enchants, name, lore);
 				boolean contains = false;
 				for (String itemKey : items.keySet()) {
-					if (items.get(itemKey).equalsQ(item)) {
+					if (items.get(itemKey).equals(item)) {
 						contains = true;
 						break;
 					}
@@ -3029,7 +3212,7 @@ public class ConfigUpdater {
 					items.put(newItemID, item);
 				} else {
 					for (String itemName : items.keySet()) {
-						if (items.get(itemName).equalsQ(item)) {
+						if (items.get(itemName).equals(item)) {
 							newItemID = itemName;
 						}
 					}
@@ -3083,10 +3266,11 @@ public class ConfigUpdater {
 				}
 				// create an item
 				String newItemID = null;
+				@SuppressWarnings("deprecation")
 				QuestItem item = new QuestItem(material, data, enchants, name, lore);
 				boolean contains = false;
 				for (String itemKey : items.keySet()) {
-					if (items.get(itemKey).equalsQ(item)) {
+					if (items.get(itemKey).equals(item)) {
 						contains = true;
 						break;
 					}
@@ -3098,7 +3282,7 @@ public class ConfigUpdater {
 					items.put(newItemID, item);
 				} else {
 					for (String itemName : items.keySet()) {
-						if (items.get(itemName).equalsQ(item)) {
+						if (items.get(itemName).equals(item)) {
 							newItemID = itemName;
 						}
 					}
@@ -3115,14 +3299,14 @@ public class ConfigUpdater {
 			if (item.getName() != null) {
 				instruction = instruction + " name:" + item.getName().replace(" ", "_");
 			}
-			if (!item.getLore().isEmpty()) {
+			if (item.getLore() != null && !item.getLore().isEmpty()) {
 				StringBuilder lore = new StringBuilder();
 				for (String line : item.getLore()) {
 					lore.append(line + ";");
 				}
 				instruction = instruction + " lore:" + (lore.substring(0, lore.length() - 1).replace(" ", "_"));
 			}
-			if (!item.getEnchants().isEmpty()) {
+			if (item.getEnchants() != null && !item.getEnchants().isEmpty()) {
 				StringBuilder enchants = new StringBuilder();
 				for (Enchantment enchant : item.getEnchants().keySet()) {
 					enchants.append(enchant.toString() + ":" + item.getEnchants().get(enchant) + ",");
@@ -3328,27 +3512,19 @@ public class ConfigUpdater {
 		 */
 		public ConfigHandler() {
 			// put config accesors in fields
-			conversations = new ConfigAccessor(BetonQuest.getInstance(),
-					new File(BetonQuest.getInstance().getDataFolder(), "conversations.yml"), "conversations.yml");
-			objectives = new ConfigAccessor(BetonQuest.getInstance(),
-					new File(BetonQuest.getInstance().getDataFolder(), "objectives.yml"), "objectives.yml");
-			conditions = new ConfigAccessor(BetonQuest.getInstance(),
-					new File(BetonQuest.getInstance().getDataFolder(), "conditions.yml"), "conditions.yml");
-			events = new ConfigAccessor(BetonQuest.getInstance(),
-					new File(BetonQuest.getInstance().getDataFolder(), "events.yml"), "events.yml");
-			npcs = new ConfigAccessor(BetonQuest.getInstance(),
-					new File(BetonQuest.getInstance().getDataFolder(), "npcs.yml"), "npcs.yml");
-			journal = new ConfigAccessor(BetonQuest.getInstance(),
-					new File(BetonQuest.getInstance().getDataFolder(), "journal.yml"), "journal.yml");
-			items = new ConfigAccessor(BetonQuest.getInstance(),
-					new File(BetonQuest.getInstance().getDataFolder(), "items.yml"), "items.yml");
-			messages = new ConfigAccessor(BetonQuest.getInstance(),
-					new File(BetonQuest.getInstance().getDataFolder(), "messages.yml"), "messages.yml");
+			conversations = new ConfigAccessor(new File(BetonQuest.getInstance().getDataFolder(), "conversations.yml"), "conversations.yml", AccessorType.CONVERSATION);
+			objectives = new ConfigAccessor(new File(BetonQuest.getInstance().getDataFolder(), "objectives.yml"), "objectives.yml", AccessorType.OBJECTIVES);
+			conditions = new ConfigAccessor(new File(BetonQuest.getInstance().getDataFolder(), "conditions.yml"), "conditions.yml", AccessorType.CONDITIONS);
+			events = new ConfigAccessor(new File(BetonQuest.getInstance().getDataFolder(), "events.yml"), "events.yml", AccessorType.EVENTS);
+			npcs = new ConfigAccessor(new File(BetonQuest.getInstance().getDataFolder(), "npcs.yml"), "npcs.yml", AccessorType.MAIN);
+			journal = new ConfigAccessor(new File(BetonQuest.getInstance().getDataFolder(), "journal.yml"), "journal.yml", AccessorType.JOURNAL);
+			items = new ConfigAccessor(new File(BetonQuest.getInstance().getDataFolder(), "items.yml"), "items.yml", AccessorType.ITEMS);
+			messages = new ConfigAccessor(new File(BetonQuest.getInstance().getDataFolder(), "messages.yml"), "messages.yml", AccessorType.OTHER);
 			if (new File(BetonQuest.getInstance().getDataFolder(), "conversations").exists()) {
 				// put conversations accessors in the hashmap
 				for (File file : new File(BetonQuest.getInstance().getDataFolder(), "conversations").listFiles()) {
 					conversationsMap.put(file.getName().substring(0, file.getName().indexOf(".")),
-							new ConfigAccessor(BetonQuest.getInstance(), file, file.getName()));
+							new ConfigAccessor(file, file.getName(), AccessorType.CONVERSATION));
 				}
 			}
 		}

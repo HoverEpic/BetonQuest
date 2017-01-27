@@ -23,6 +23,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 import pl.betoncraft.betonquest.BetonQuest;
+import pl.betoncraft.betonquest.utils.Debug;
 
 /**
  * Connects to the database and queries it
@@ -44,6 +45,20 @@ public class Connector {
 		prefix = plugin.getConfig().getString("mysql.prefix", "");
 		db = plugin.getDB();
 		connection = db.getConnection();
+		refresh();
+	}
+	
+	/**
+	 * This method should be used before any other database operations.
+	 */
+	public void refresh() {
+		try {
+			connection.prepareStatement("SELECT 1").executeQuery();
+		} catch (SQLException e) {
+			Debug.info("Reconnecting to the database");
+			db.closeConnection();
+			connection = db.getConnection();
+		}
 	}
 
 	/**
@@ -53,7 +68,7 @@ public class Connector {
 	 *            type of the query
 	 * @param args
 	 *            arguments
-	 * @return ResultSet with the requsted data
+	 * @return ResultSet with the requested data
 	 */
 	public ResultSet querySQL(QueryType type, String[] args) {
 		try {

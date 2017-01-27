@@ -28,18 +28,19 @@ import org.bukkit.inventory.ItemStack;
 import pl.betoncraft.betonquest.BetonQuest;
 import pl.betoncraft.betonquest.InstructionParseException;
 import pl.betoncraft.betonquest.Journal;
+import pl.betoncraft.betonquest.ObjectNotFoundException;
+import pl.betoncraft.betonquest.ObjectiveID;
 import pl.betoncraft.betonquest.Point;
 import pl.betoncraft.betonquest.Pointer;
-import pl.betoncraft.betonquest.QuestItem;
 import pl.betoncraft.betonquest.api.Objective;
 import pl.betoncraft.betonquest.config.Config;
 import pl.betoncraft.betonquest.config.QuestCanceler;
 import pl.betoncraft.betonquest.database.Connector.QueryType;
 import pl.betoncraft.betonquest.database.Connector.UpdateType;
 import pl.betoncraft.betonquest.database.Saver.Record;
+import pl.betoncraft.betonquest.item.QuestItem;
 import pl.betoncraft.betonquest.utils.Debug;
 import pl.betoncraft.betonquest.utils.PlayerConverter;
-import pl.betoncraft.betonquest.utils.Utils;
 
 /**
  * Represents an object storing all player-related data, which can load and save it.
@@ -55,8 +56,7 @@ public class PlayerData {
 	private List<String> tags = new ArrayList<>();
 	private List<Pointer> entries = new ArrayList<>();
 	private List<Point> points = new ArrayList<>();
-	private HashMap<String, String> objectives = new HashMap<>(); // not active
-																	// ones
+	private HashMap<String, String> objectives = new HashMap<>(); // not active ones
 	private Journal journal;
 	private List<ItemStack> backpack = new ArrayList<>();
 	private String conv;
@@ -80,7 +80,7 @@ public class PlayerData {
 	 */
 	public void loadAllPlayerData() {
 		try {
-			// open connection to the database
+			// get connection to the database
 			Connector con = new Connector();
 
 			// load objectives
@@ -117,7 +117,7 @@ public class PlayerData {
 				int amount = res5.getInt("amount");
 				ItemStack item;
 				try {
-					item = new QuestItem(instruction).generateItem(amount);
+					item = new QuestItem(instruction).generate(amount);
 				} catch (InstructionParseException e) {
 					Debug.error("Could not load backpack item for player " + PlayerConverter.getName(playerID)
 							+ ", with instruction '" + instruction + "', because: " + e.getMessage());
@@ -140,7 +140,7 @@ public class PlayerData {
 				}
 			} else {
 				lang = Config.getLanguage();
-				con.updateSQL(UpdateType.ADD_PLAYER, new String[] { playerID, "default" });
+				saver.add(new Record(UpdateType.ADD_PLAYER, new String[] { playerID, "default" }));
 			}
 
 			// log data to debugger
@@ -290,7 +290,13 @@ public class PlayerData {
 	 */
 	public void startObjectives() {
 		for (String objective : objectives.keySet()) {
-			BetonQuest.resumeObjective(playerID, objective, objectives.get(objective));
+			try {
+				ObjectiveID objectiveID = new ObjectiveID(null, objective);
+				BetonQuest.resumeObjective(playerID, objectiveID, objectives.get(objective));
+			} catch (ObjectNotFoundException e) {
+				Debug.error("Loaded '" + objective
+						+ "' objective from the database, but it is not defined in configuration. Skipping.");
+			}
 		}
 		objectives.clear();
 	}
@@ -310,14 +316,14 @@ public class PlayerData {
 	 * @param objectiveID
 	 *            ID of the objective
 	 */
-	public void addNewRawObjective(String objectiveID) {
+	public void addNewRawObjective(ObjectiveID objectiveID) {
 		Objective obj = BetonQuest.getInstance().getObjective(objectiveID);
 		if (obj == null) {
 			return;
 		}
 		String data = obj.getDefaultDataInstruction();
-		if (addRawObjective(objectiveID, data))
-			saver.add(new Record(UpdateType.ADD_OBJECTIVES, new String[]{playerID, objectiveID, data}));
+		if (addRawObjective(objectiveID.toString(), data))
+			saver.add(new Record(UpdateType.ADD_OBJECTIVES, new String[]{playerID, objectiveID.toString(), data}));
 	}
 
 	/**
@@ -343,9 +349,9 @@ public class PlayerData {
 	 * 
 	 * @param objectiveID
 	 */
-	public void removeRawObjective(String objectiveID) {
-		objectives.remove(objectiveID);
-		removeObjFromDB(objectiveID);
+	public void removeRawObjective(ObjectiveID objectiveID) {
+		objectives.remove(objectiveID.toString());
+		removeObjFromDB(objectiveID.toString());
 	}
 
 	/**
@@ -386,7 +392,7 @@ public class PlayerData {
 		// update the database (quite expensive way, should be changed)
 		saver.add(new Record(UpdateType.DELETE_BACKPACK, new String[] { playerID }));
 		for (ItemStack itemStack : list) {
-			String instruction = Utils.itemToString(itemStack);
+			String instruction = QuestItem.itemToString(itemStack);
 			String amount = String.valueOf(itemStack.getAmount());
 			saver.add(new Record(UpdateType.ADD_BACKPACK, new String[] { playerID, instruction, amount }));
 		}
@@ -440,7 +446,7 @@ public class PlayerData {
 		// update the database (quite expensive way, should be changed)
 		saver.add(new Record(UpdateType.DELETE_BACKPACK, new String[] { playerID }));
 		for (ItemStack itemStack : backpack) {
-			String instruction = Utils.itemToString(itemStack);
+			String instruction = QuestItem.itemToString(itemStack);
 			String newAmount = String.valueOf(itemStack.getAmount());
 			saver.add(new Record(UpdateType.ADD_BACKPACK, new String[] { playerID, instruction, newAmount }));
 		}
@@ -504,13 +510,12 @@ public class PlayerData {
 		getJournal().clear(); // journal can be null, so use a method to get it
 		backpack.clear();
 		// clear the database
-		Connector database = new Connector();
-		database.updateSQL(UpdateType.DELETE_OBJECTIVES, new String[] { playerID });
-		database.updateSQL(UpdateType.DELETE_JOURNAL, new String[] { playerID });
-		database.updateSQL(UpdateType.DELETE_POINTS, new String[] { playerID });
-		database.updateSQL(UpdateType.DELETE_TAGS, new String[] { playerID });
-		database.updateSQL(UpdateType.DELETE_BACKPACK, new String[] { playerID });
-		database.updateSQL(UpdateType.UPDATE_CONVERSATION, new String[] { "null", playerID });
+		saver.add(new Record(UpdateType.DELETE_OBJECTIVES, new String[] { playerID }));
+		saver.add(new Record(UpdateType.DELETE_JOURNAL, new String[] { playerID }));
+		saver.add(new Record(UpdateType.DELETE_POINTS, new String[] { playerID }));
+		saver.add(new Record(UpdateType.DELETE_TAGS, new String[] { playerID }));
+		saver.add(new Record(UpdateType.DELETE_BACKPACK, new String[] { playerID }));
+		saver.add(new Record(UpdateType.UPDATE_CONVERSATION, new String[] { "null", playerID }));
 		// update the journal so it's empty
 		if (PlayerConverter.getPlayer(playerID) != null) {
 			getJournal().update();
